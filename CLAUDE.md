@@ -10,6 +10,8 @@
 @~/.claude/includes/code-style.md
 @~/.claude/includes/development-commands.md
 @~/.claude/includes/development-philosophy.md
+@~/.claude/includes/upstream-pr-workflow.md
+
 
 # ABI
 
@@ -28,3 +30,19 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 - `parse_specification/2` accepts `:string_keys` to keep ABI JSON keys as strings rather than atoms — preserve this when touching selector parsing.
 - `TypeEncoder` recently grew integer- and string-key support (commits `a43e9d5`, `46accc8`); when adding new type paths, mirror both keyed-map and tuple input shapes.
 - This library is consumed downstream by transaction builders. Breaking the public encode/decode shape is a major-version event — bump `version` in `mix.exs` accordingly.
+
+## Open Work
+
+See [ROADMAP.md](ROADMAP.md) for the current punch list (bugs, test debt, feature gaps).
+
+## Upstream Issue Monitoring
+
+Open issues filed on `exthereum/abi` that affect this fork's direction — check status at session start:
+
+- [exthereum/abi#53](https://github.com/exthereum/abi/issues/53) — indexed dynamic event params decoded wrong (bug). Filed 2026-04-24. Watch for maintainer response on the suggested `is_dynamic?` + raw-topic-bytes fix before starting a PR.
+- [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) — `fixed`/`ufixed`/`function` parse-but-don't-encode + `@type type` gaps. Filed 2026-04-24. Low-risk path (parse-time rejection + typespec fix) is offered; watch for maintainer preference between "implement" vs "reject at parse."
+- Also watch PR #52 (Elixir 1.19 compat + typespec widening) — currently open, may need rebase or follow-up if maintainer requests changes.
+
+Check with `gh issue view 53 --repo exthereum/abi` / `gh issue view 54 --repo exthereum/abi` / `gh pr view 52 --repo exthereum/abi`.
+
+Second-round candidates (held, not filed): `abi.encodePacked` scope check, `ABI.decode_error/2` helper, `decode_event/4` error contract. File after #53/#54 get a response to gauge maintainer receptivity.
