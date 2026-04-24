@@ -127,6 +127,7 @@ defmodule ABI.FunctionSelector do
         ]
       }
   """
+  @spec decode(String.t()) :: t()
   def decode(signature) do
     ABI.Parser.parse!(signature, as: :selector)
   end
@@ -142,6 +143,7 @@ defmodule ABI.FunctionSelector do
       iex> ABI.FunctionSelector.decode_raw("")
       []
   """
+  @spec decode_raw(String.t()) :: [type()]
   def decode_raw(type_string) do
     {:tuple, types} = decode_type("(#{type_string})")
     Enum.map(types, fn argument_type -> argument_type.type end)
@@ -279,6 +281,7 @@ defmodule ABI.FunctionSelector do
       iex> ABI.FunctionSelector.parse_specification_item(%{"inputs" => [], "name" => "Abc", "type" => "error"})
       %ABI.FunctionSelector{function: "Abc", function_type: :error, state_mutability: nil, types: [], returns: nil}
   """
+  @spec parse_specification_item(map()) :: t()
   def parse_specification_item(%{"type" => function_type} = item) do
     input_types = Enum.map(Map.get(item, "inputs", []), &parse_specification_type/1)
 
@@ -343,6 +346,7 @@ defmodule ABI.FunctionSelector do
       iex> ABI.FunctionSelector.decode_type("address[][3]")
       {:array, {:array, :address}, 3}
   """
+  @spec decode_type(String.t()) :: type()
   def decode_type(single_type) do
     ABI.Parser.parse!(single_type, as: :type)
   end
@@ -413,6 +417,7 @@ defmodule ABI.FunctionSelector do
       ...> }, false, true)
       "bark(uint256 a,bool b,string[] c,string[3] d,(uint256,bool) e)"
   """
+  @spec encode(t(), boolean(), boolean()) :: String.t()
   def encode(function_selector, indexed \\ false, names \\ false) do
     types = get_types(function_selector, indexed, names) |> Enum.join(",")
 

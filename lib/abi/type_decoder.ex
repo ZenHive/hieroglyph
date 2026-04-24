@@ -170,7 +170,7 @@ defmodule ABI.TypeDecoder do
       ...>    )
       ["BAT"]
   """
-
+  @spec decode(binary(), ABI.FunctionSelector.t(), keyword()) :: [any()]
   def decode(encoded_data, function_selector, opts \\ []) do
     if is_nil(function_selector.function) do
       decode_raw(encoded_data, function_selector.types, opts)
@@ -302,10 +302,24 @@ defmodule ABI.TypeDecoder do
     raise "Unsupported decoding type: #{inspect(els)}"
   end
 
+  @doc """
+  Combines a list of ABI argument types with a list of decoded element values
+  into either a tuple or (when `decode_structs` is true and every type carries
+  a non-empty `:name`) a map keyed by `String.to_atom(Macro.underscore(name))`.
+
+  Used internally by `decode_type({:tuple, types}, ...)` to render the
+  second-pass result; exposed because event-log decoding in `ABI.Event`
+  reuses the same shape.
+  """
   # Field name comes from the ABI specification (trusted contract metadata),
   # not arbitrary runtime input; this branch is gated behind the opt-in
   # `decode_structs: true`.
   # sobelow_skip ["DOS.StringToAtom"]
+  @spec tuple_value(
+          [ABI.FunctionSelector.argument_type()],
+          [any()],
+          boolean()
+        ) :: map() | tuple()
   def tuple_value(types, elements, decode_structs) do
     if decode_structs and
          Enum.all?(types, fn type -> type[:name] != nil and type[:name] != <<>> end) do
@@ -337,6 +351,12 @@ defmodule ABI.TypeDecoder do
     {value, rest}
   end
 
+  @doc """
+  Reads `size_in_bytes` of content out of `data`, skipping the 32-byte-slot
+  padding on whichever side matches `padding_direction` (`:left` for
+  left-padded types like `address` and `uint`/`int`, `:right` for
+  right-padded types like `bytes<M>` and `string`). Returns `{value, rest}`.
+  """
   @spec decode_bytes(binary(), integer(), atom()) :: {binary(), binary()}
   def decode_bytes(data, size_in_bytes, padding_direction) do
     # TODO: Create `unright_pad` repo, err, add to `ABI.Math`

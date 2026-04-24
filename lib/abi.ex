@@ -198,6 +198,7 @@ defmodule ABI do
       ...> |> Base.encode16(case: :lower)
       "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
   """
+  @spec event_signature(binary() | ABI.FunctionSelector.t()) :: binary()
   def event_signature(function_signature) when is_binary(function_signature) do
     event_signature(ABI.FunctionSelector.decode(function_signature))
   end
@@ -263,6 +264,7 @@ defmodule ABI do
       ...> |> ABI.parse_specification
       [%ABI.FunctionSelector{function: nil, function_type: :fallback, state_mutability: :nonpayable, returns: nil, types: []}]
   """
+  @spec parse_specification([map()]) :: [ABI.FunctionSelector.t()]
   def parse_specification(doc) do
     doc
     |> Enum.map(&ABI.FunctionSelector.parse_specification_item/1)

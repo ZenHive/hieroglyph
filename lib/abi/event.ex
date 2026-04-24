@@ -90,6 +90,8 @@ defmodule ABI.Event do
           "to" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]
       }}
   """
+  @spec decode_event(binary(), [binary()], ABI.FunctionSelector.t(), keyword()) ::
+          {:ok, String.t() | nil, map()} | {:error, String.t()}
   def decode_event(data, topics, function_selector, opts \\ []) do
     check_event_signature = Keyword.get(opts, :check_event_signature, true)
 
@@ -166,6 +168,7 @@ defmodule ABI.Event do
       ...> |> to_hex()
       "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
   """
+  @spec event_signature(ABI.FunctionSelector.t()) :: binary()
   def event_signature(function_selector) do
     function_selector
     |> ABI.FunctionSelector.encode()
@@ -230,6 +233,7 @@ defmodule ABI.Event do
       ...> )
       "Transfer(address indexed from,address indexed to,uint256 amount)"
   """
+  @spec canonical(ABI.FunctionSelector.t(), keyword()) :: String.t()
   def canonical(function_selector, opts \\ []) do
     indexed = Keyword.get(opts, :indexed, false)
     names = Keyword.get(opts, :names, false)

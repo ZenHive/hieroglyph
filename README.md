@@ -1,11 +1,10 @@
 # ABI [![CircleCI](https://circleci.com/gh/exthereum/abi.svg?style=svg)](https://circleci.com/gh/exthereum/abi)
 
-The [Application Binary Interface](https://solidity.readthedocs.io/en/develop/abi-spec.html) (ABI) of Solidity describes how to transform binary data to types which the Solidity programming language understands. For instance, if we want to call a function `bark(uint32,bool)` on a Solidity-created contract `contract Dog`, what `data` parameter do we pass into our Ethereum transaction? This project allows us to encode such function calls.
+The [Application Binary Interface](https://docs.soliditylang.org/en/latest/abi-spec.html) (ABI) of Solidity describes how to transform binary data to types which the Solidity programming language understands. For instance, if we want to call a function `bark(uint32,bool)` on a Solidity-created contract `contract Dog`, what `data` parameter do we pass into our Ethereum transaction? This project allows us to encode such function calls.
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `abi` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `abi` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -23,7 +22,7 @@ be found at [https://hexdocs.pm/abi](https://hexdocs.pm/abi).
 
 ### Encoding
 
-To encode a function call, pass the ABI spec and the data to pass in to `ABI.encode/1`.
+To encode a function call, pass the ABI spec and the data to pass in to `ABI.encode/2`.
 
 ```elixir
 iex> ABI.encode("baz(uint,address)", [50, <<1::160>> |> :binary.decode_unsigned])
@@ -51,6 +50,61 @@ iex> ABI.decode("baz(uint,address)", "000000000000000000000000000000000000000000
 [50, <<1::160>> |> :binary.decode_unsigned]
 ```
 
+### Parsing a JSON ABI file
+
+Full contract ABIs from `solc` / Foundry / Hardhat can be fed straight into `ABI.parse_specification/1` after decoding the JSON. Non-function entries (constructors) are skipped; function, fallback, receive, event, and custom-error entries are all returned as `ABI.FunctionSelector` structs.
+
+```elixir
+iex> File.read!("priv/dog.abi.json")
+...> |> Jason.decode!()
+...> |> ABI.parse_specification()
+...> |> Enum.find(&(&1.function == "bark"))
+%ABI.FunctionSelector{function: "bark", function_type: :function, ...}
+```
+
+Each returned selector carries its `function_type` (`:function`, `:constructor`, `:fallback`, `:receive`, `:event`, or `:error`), so you can filter the parsed list by shape when a single ABI mixes all of them.
+
+### Decoding event logs
+
+Event logs arrive as `{data, topics}` pairs from the JSON-RPC node. `ABI.decode_event/4` (or the lower-level `ABI.Event.decode_event/4`) splits indexed parameters out of the topics and decodes non-indexed parameters from the data blob. By default it verifies that `topics[0]` matches the keccak256 of the event signature; pass `check_event_signature: false` to skip that check when decoding anonymous events or when `topics` intentionally omits the signature slot.
+
+```elixir
+iex> hex = &Base.decode16!(&1, case: :lower)
+iex> ABI.decode_event(
+...>   "Transfer(address indexed from, address indexed to, uint256 amount)",
+...>   hex.("00000000000000000000000000000000000000000000000000000004a817c800"),
+...>   [
+...>     hex.("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
+...>     hex.("000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8"),
+...>     hex.("0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea")
+...>   ]
+...> )
+{:ok, "Transfer",
+ %{
+   "amount" => 20_000_000_000,
+   "from" => <<0xb2, 0xb7, 0xc1, 0x79, 0x5f, 0x19, 0xfb, 0xc2, 0x8f, 0xda, 0x77, 0xa9, 0x5e, 0x59, 0xed, 0xbb, 0x8b, 0x37, 0x09, 0xc8>>,
+   "to"   => <<0x77, 0x95, 0x12, 0x6b, 0x3a, 0xe4, 0x68, 0xf4, 0x4c, 0x90, 0x12, 0x87, 0xde, 0x98, 0x59, 0x41, 0x98, 0xce, 0x38, 0xea>>
+ }}
+```
+
+### Map and struct input to `encode/2`
+
+For tuple/struct parameters whose `:name` is known (i.e. parsed from a JSON ABI, or declared in a `FunctionSelector` literal), `ABI.encode/2` accepts a plain `Map` in place of the raw tuple. Both atom keys and string keys are resolved, with camelCase ABI names auto-mapped to their snake_case atom form. The output is identical to the tuple-shaped input — useful when the encoded parameters originated from a prior `ABI.decode/3` call with `decode_structs: true`, or from Jason-decoded request payloads.
+
+```elixir
+iex> selector = %ABI.FunctionSelector{
+...>   function: nil,
+...>   types: [%{type: {:tuple, [
+...>     %{name: "recipient", type: :address},
+...>     %{name: "amount",    type: {:uint, 256}}
+...>   ]}}]
+...> }
+iex> ABI.encode(selector, [%{recipient: <<1::160>>, amount: 1_000}])
+...> ==
+...>   ABI.encode(selector, [{<<1::160>>, 1_000}])
+true
+```
+
 ## Support
 
 Currently supports:
@@ -63,18 +117,18 @@ Currently supports:
   * [ ] `fixed<M>x<N>`
   * [ ] `ufixed<M>x<N>`
   * [ ] `fixed`
-  * [ ] `bytes<M>`
+  * [X] `bytes<M>`
   * [ ] `function`
   * [X] `<type>[M]`
   * [X] `bytes`
   * [X] `string`
   * [X] `<type>[]`
-  * [X] `(T1,T2,...,Tn)` (* currently ABI parsing doesn't parse tuples with multiple elements)
+  * [X] `(T1,T2,...,Tn)`
 
 # Docs
 
-* [Solidity ABI](https://solidity.readthedocs.io/en/develop/abi-spec.html)
-* [Solidity Docs](https://solidity.readthedocs.io/)
+* [Solidity ABI](https://docs.soliditylang.org/en/latest/abi-spec.html)
+* [Solidity Docs](https://docs.soliditylang.org/)
 * [Solidity Grammar](https://github.com/ethereum/solidity/blob/develop/docs/grammar.txt)
 * [Exthereum Blockchain](https://github.com/exthereum/blockchain)
 

@@ -118,4 +118,54 @@ defmodule ABI.TypeEncoderTest do
       end
     end
   end
+
+  describe "type-error paths" do
+    test "bool with non-boolean value raises" do
+      selector = %FunctionSelector{function: nil, types: [%{type: :bool}]}
+
+      assert_raise RuntimeError, ~r/Invalid data for bool/, fn ->
+        TypeEncoder.encode([42], selector)
+      end
+    end
+
+    test "bytes<N> with a binary longer than N raises size mismatch" do
+      selector = %FunctionSelector{function: nil, types: [%{type: {:bytes, 4}}]}
+
+      assert_raise RuntimeError, ~r/size mismatch for bytes4/, fn ->
+        TypeEncoder.encode([<<1, 2, 3, 4, 5>>], selector)
+      end
+    end
+
+    test "bytes<N> with a non-binary value raises wrong datatype" do
+      selector = %FunctionSelector{function: nil, types: [%{type: {:bytes, 4}}]}
+
+      assert_raise RuntimeError, ~r/wrong datatype for bytes4/, fn ->
+        TypeEncoder.encode([42], selector)
+      end
+    end
+
+    test "unrecognized type atom raises unsupported encoding type" do
+      selector = %FunctionSelector{function: nil, types: [%{type: :banana}]}
+
+      assert_raise RuntimeError, ~r/Unsupported encoding type/, fn ->
+        TypeEncoder.encode([:anything], selector)
+      end
+    end
+
+    test "int overflow raises data overflow" do
+      selector = %FunctionSelector{function: nil, types: [%{type: {:int, 8}}]}
+
+      assert_raise RuntimeError, ~r/Data overflow encoding int/, fn ->
+        TypeEncoder.encode([-200], selector)
+      end
+    end
+
+    test "uint overflow raises data overflow" do
+      selector = %FunctionSelector{function: nil, types: [%{type: {:uint, 8}}]}
+
+      assert_raise RuntimeError, ~r/Data overflow encoding uint/, fn ->
+        TypeEncoder.encode([256], selector)
+      end
+    end
+  end
 end
