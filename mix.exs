@@ -15,8 +15,14 @@ defmodule ABI.Mixfile do
       ],
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
+      compilers: [:yecc, :leex] ++ Mix.compilers(),
+      aliases: aliases(),
       deps: deps()
     ]
+  end
+
+  def cli do
+    [preferred_envs: ["test.json": :test, "dialyzer.json": :dev]]
   end
 
   # Run "mix help compile.app" to learn about applications.
@@ -30,12 +36,31 @@ defmodule ABI.Mixfile do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  defp aliases do
+    [
+      tidewave: [
+        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4006) end)'"
+      ]
+    ]
+  end
+
   # Run "mix help deps" to learn about dependencies.
+  # NOTE: do not add :styler or :descripex — intentionally excluded.
   defp deps do
     [
-      {:ex_doc, "~> 0.31.1", only: :dev, runtime: false},
       {:jason, "~> 1.4"},
       {:ex_sha3, "~> 0.1.4"},
+      {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false},
+      {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:doctor, "~> 0.22", only: [:dev, :test], runtime: false},
+      {:tidewave, "~> 0.5", only: :dev},
+      {:bandit, "~> 1.10", only: :dev},
+      {:ex_dna, "~> 1.3", only: [:dev, :test], runtime: false},
+      {:ex_ast, "~> 0.5", only: [:dev, :test], runtime: false}
     ]
   end
 end

@@ -201,15 +201,16 @@ defmodule ABI.TypeEncoder do
       ...> |> Base.encode16(case: :lower)
       "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01"
   """
+  @spec encode([any()], ABI.FunctionSelector.t()) :: binary()
   def encode(data, function_selector) do
     encode_method_id(function_selector) <> do_encode_data(data, function_selector)
   end
 
-  defp do_encode_data(data, %ABI.FunctionSelector{function: nil}=function_selector) do
+  defp do_encode_data(data, %ABI.FunctionSelector{function: nil} = function_selector) do
     encode_raw(data, function_selector.types)
   end
 
-  defp do_encode_data(data, %ABI.FunctionSelector{}=function_selector) do
+  defp do_encode_data(data, %ABI.FunctionSelector{} = function_selector) do
     encode_raw([List.to_tuple(data)], [%{type: {:tuple, function_selector.types}}])
   end
 
@@ -229,7 +230,7 @@ defmodule ABI.TypeEncoder do
     do_encode(types, data, [])
   end
 
-  @spec encode_method_id(%ABI.FunctionSelector{}) :: binary()
+  @spec encode_method_id(ABI.FunctionSelector.t()) :: binary()
   defp encode_method_id(%ABI.FunctionSelector{function: nil}), do: ""
 
   defp encode_method_id(function_selector) do
@@ -246,7 +247,7 @@ defmodule ABI.TypeEncoder do
     init
   end
 
-  @spec do_encode([ABI.FunctionSelector.type()], [any()], [binary()]) :: binary()
+  @spec do_encode([ABI.FunctionSelector.argument_type()], [any()], [binary()]) :: binary()
   defp do_encode([], _, acc), do: :erlang.iolist_to_binary(Enum.reverse(acc))
 
   defp do_encode([type | remaining_types], data, acc) do
@@ -306,8 +307,9 @@ defmodule ABI.TypeEncoder do
 
     {head, tail, [], _} =
       Enum.reduce(types, {<<>>, <<>>, data_to_list(types, data), tail_start}, fn argument_type,
-                                                                               {head, tail, data,
-                                                                                tail_position} ->
+                                                                                 {head, tail,
+                                                                                  data,
+                                                                                  tail_position} ->
         type = argument_type.type
         {el, rest} = encode_type(type, data)
 
@@ -325,11 +327,12 @@ defmodule ABI.TypeEncoder do
   end
 
   defp encode_type({:array, type, element_count}, [data | rest]) do
-    repeated_type = if element_count == 0 do
-      []
-    else
-       Enum.map(1..element_count, fn _ -> %{type: type} end)
-    end
+    repeated_type =
+      if element_count == 0 do
+        []
+      else
+        Enum.map(1..element_count, fn _ -> %{type: type} end)
+      end
 
     encode_type({:tuple, repeated_type}, [data |> List.to_tuple() | rest])
   end
@@ -351,7 +354,8 @@ defmodule ABI.TypeEncoder do
     bytes |> pad(byte_size(bytes), :right)
   end
 
-  defp encode_int(int, desired_size_bits) when rem(desired_size_bits, 8) == 0 and is_integer(int) do
+  defp encode_int(int, desired_size_bits)
+       when rem(desired_size_bits, 8) == 0 and is_integer(int) do
     desired_size_bytes = ceil(desired_size_bits / 8)
 
     sign_byte = if(int < 0, do: <<0xFF>>, else: <<0x00>>)
@@ -415,7 +419,7 @@ defmodule ABI.TypeEncoder do
     |> Enum.sum()
   end
 
-  defp do_count(%{type: t={:tuple, sub_types}}) do
+  defp do_count(%{type: t = {:tuple, sub_types}}) do
     if ABI.FunctionSelector.is_dynamic?(t) do
       1
     else
@@ -424,10 +428,16 @@ defmodule ABI.TypeEncoder do
       |> Enum.sum()
     end
   end
+
   defp do_count(_), do: 1
 
   defp data_to_list(_types, data) when is_list(data), do: data
   defp data_to_list(_types, data) when is_tuple(data), do: Tuple.to_list(data)
+
+  # Field name comes from the ABI specification (trusted contract metadata),
+  # not arbitrary runtime input. Atom creation is bounded by the set of
+  # field names declared across all ABIs the consumer loads.
+  # sobelow_skip ["DOS.StringToAtom"]
   defp data_to_list(types, data) when is_map(data) do
     Enum.map(types, fn type ->
       if type[:name] do

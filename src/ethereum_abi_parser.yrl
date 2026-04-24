@@ -1,6 +1,10 @@
-Terminals '(' ')' '[' ']' ',' '->' 'x' typename 'indexed' letters digits 'expecting identifier' 'expecting selector' 'expecting type'.
+Terminals '(' ')' '[' ']' ',' '->' 'x' typename 'indexed' letters digits 'expecting selector' 'expecting type'.
 Nonterminals dispatch selector nontrivial_selector comma_delimited_types type_with_subscripts type_index_name array_subscripts tuple array_subscript identifier  identifier_parts identifier_part type typespec.
 Rootsymbol dispatch.
+%% Expect 1 shift/reduce conflict: the `dispatch` rules allow both a bare
+%% `tuple` and a `nontrivial_selector` that begins with a `typespec` (which
+%% can also be a tuple), making this ambiguity structural rather than a bug.
+Expect 1.
 
 dispatch -> 'expecting type' type_with_subscripts : {type, '$2'}.
 dispatch -> 'expecting selector' selector : {selector, '$2'}.

@@ -4,8 +4,6 @@ defmodule ABI.FunctionSelector do
   `my_function(uint64, string[])`.
   """
 
-  require Integer
-
   @type type ::
           {:uint, integer()}
           | :bool
@@ -25,11 +23,11 @@ defmodule ABI.FunctionSelector do
   @type state_mutability :: :nonpayable | :pure | :view | :payable
 
   @type t :: %__MODULE__{
-          function: String.t(),
+          function: String.t() | nil,
           function_type: function_type() | nil,
           state_mutability: state_mutability() | nil,
-          types: [argument_type],
-          returns: type
+          types: [argument_type()],
+          returns: type() | [argument_type()] | nil
         }
 
   defstruct [:function, :function_type, :state_mutability, :types, :returns]
@@ -303,15 +301,15 @@ defmodule ABI.FunctionSelector do
     }
   end
 
-  defp parse_specification_type(record=%{"name" => name, "indexed" => indexed}) do
+  defp parse_specification_type(record = %{"name" => name, "indexed" => indexed}) do
     %{name: name, type: parse_specification_type_type(record), indexed: indexed}
   end
 
-  defp parse_specification_type(record=%{"indexed" => indexed}) do
+  defp parse_specification_type(record = %{"indexed" => indexed}) do
     %{type: parse_specification_type_type(record), indexed: indexed}
   end
 
-  defp parse_specification_type(record=%{"name" => name}) do
+  defp parse_specification_type(record = %{"name" => name}) do
     %{name: name, type: parse_specification_type_type(record)}
   end
 
@@ -422,7 +420,7 @@ defmodule ABI.FunctionSelector do
   end
 
   defp get_types(function_selector, indexed, names) do
-    for {t=%{type: type}, i} <- Enum.with_index(function_selector.types) do
+    for {t = %{type: type}, i} <- Enum.with_index(function_selector.types) do
       indexed_postfix = if indexed and Map.get(t, :indexed, false), do: " indexed", else: ""
       name_postfix = if names, do: " #{Map.get(t, :name, "var#{i}")}", else: ""
       "#{get_type(type)}#{indexed_postfix}#{name_postfix}"
@@ -463,10 +461,13 @@ defmodule ABI.FunctionSelector do
   def is_dynamic?(:string), do: true
   def is_dynamic?({:array, _type}), do: true
   def is_dynamic?({:array, type, len}) when len > 0, do: is_dynamic?(type)
-  def is_dynamic?({:tuple, types}), do: Enum.any?(types, fn arg_type -> is_dynamic?(arg_type.type) end)
-  def is_dynamic?({:bytes,_}), do: false
-  def is_dynamic?({:int,_}), do: false
-  def is_dynamic?({:uint,_}), do: false
+
+  def is_dynamic?({:tuple, types}),
+    do: Enum.any?(types, fn arg_type -> is_dynamic?(arg_type.type) end)
+
+  def is_dynamic?({:bytes, _}), do: false
+  def is_dynamic?({:int, _}), do: false
+  def is_dynamic?({:uint, _}), do: false
   def is_dynamic?(:bool), do: false
   def is_dynamic?(:address), do: false
 

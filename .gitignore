@@ -22,3 +22,20 @@ erl_crash.dump
 # Ignore generated code from yecc and leex
 src/*_lexer.erl
 src/*_parser.erl
+
+# Editor/LSP
+/.elixir_ls/
+/.lexical/
+
+# AI-friendly docs output
+/doc/llms.txt
+
+# Local backups (e.g. mix.bak.exs from the full-setup migration)
+*.bak.exs
+
+# Claude Code scheduling runtime lock (session-scoped PID/sessionId)
+/.claude/scheduled_tasks.lock
+
+# Hex docs deps cache (regenerable)
+/.hex-docs/
+
