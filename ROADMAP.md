@@ -40,14 +40,20 @@ Upstream PRs for correctness bugs + test gaps in recently-added features. No arc
 
 ### Typespecs + docs
 
-- [ ] Fill `@spec` gaps [D:2/B:5/U:3 → Eff:2.0] 🎯
-      Missing specs on: `ABI.event_signature/1`, `ABI.parse_specification/1`, `ABI.TypeDecoder.decode/3`, `ABI.TypeEncoder.encode_raw/2`, all public functions in `ABI.Event`, `ABI.FunctionSelector.encode/3`. Same PR shape as `bef2ff9` (merged in #52).
+- [ ] Fill `@spec` and `@doc` gaps [D:2/B:5/U:3 → Eff:2.0] 🎯
+      Missing specs on: `ABI.event_signature/1`, `ABI.parse_specification/1`, `ABI.TypeDecoder.decode/3`, `ABI.TypeDecoder.tuple_value/3`, `ABI.TypeEncoder.encode_raw/2`, all public functions in `ABI.Event`, `ABI.FunctionSelector.encode/3`. Missing `@doc` on `ABI.TypeDecoder.tuple_value/3` and `ABI.TypeDecoder.decode_bytes/3`. (The `ABI.TypeEncoder.encode_bytes/1` doc gap resolves via the separate "encode_bytes accidentally public" Bugs item — making it `defp` removes it from doctor's public count.) Closes the two red rows in `mix doctor`. Same PR shape as `bef2ff9` (merged in #52).
 
 - [ ] Refresh README [D:2/B:6/U:6 → Eff:3.0] 🎯
       Stale tuple caveat ("currently ABI parsing doesn't parse tuples with multiple elements" — no longer true via JSON ABI), no example for `decode_event/4` or `parse_specification/1`, no mention of custom errors or that `abi.encodePacked` is unsupported. New users hit these gaps.
 
 - [ ] Extract padding helpers into `ABI.Math` [D:3/B:4/U:3 → Eff:1.17] 📋
       Three stale TODOs (`type_encoder.ex:399`, `type_decoder.ex:324`, `type_decoder.ex:342`) point at this. Padding logic duplicated between encoder and decoder. Mechanical refactor, zero behavior change.
+
+- [ ] Credo style cleanup (AliasUsage + MaxLineLength + ParameterPatternMatching + Nesting) [D:2/B:3/U:3 → Eff:1.5] 📋
+      50 mechanical `mix credo --strict` issues across `lib/` and `test/support/hex.ex`: 29 × `Design.AliasUsage` (add `alias ABI.FunctionSelector` / `alias ABI.Math` at module tops), 16 × `Readability.MaxLineLength` (wrap lines >80 chars), 3 × `Consistency.ParameterPatternMatching` (flip `record = %{...}` to `%{...} = record` in `function_selector.ex:304–312`), and 2 × `Refactor.Nesting` (split the deep `cond`-inside-`case` blocks at `event.ex:134` and `type_encoder.ex:461` into helpers). Zero behavior change. Upstream already opted into `strict: true` via `.credo.exs`, so this ships as one "Credo strict cleanup" PR. Excludes the 3 × `TagTODO` (tracked under padding refactor) and the 9 × `PredicateFunctionNames` hits (tracked as the `is_dynamic?` rename below).
+
+- [ ] Rename `ABI.FunctionSelector.is_dynamic?/1` → `dynamic?/1` [D:2/B:3/U:2 → Eff:1.25] 📋
+      Function is already `@doc false` (documented as internal), only called from 3 internal sites (`type_encoder.ex:331,438`, `type_decoder.ex:273`). Credo's `PredicateFunctionNames` flags all 9 `def` clauses because the name starts with `is_`. Safe upstream PR; add a short deprecation shim (`defdelegate is_dynamic?/1, to: __MODULE__, as: :dynamic?` + `@deprecated`) if concerned about any downstream fork callers we can't see.
 
 ---
 
@@ -76,9 +82,11 @@ Upstream PRs for correctness bugs + test gaps in recently-added features. No arc
 | `encode_bytes/1` → `defp` | ✅ Hygiene — one-line PR |
 | Map-input tests | ✅ Tests for recently-merged feature |
 | Round-trip tests | ✅ Pure addition |
-| Typespec gaps | ✅ Same shape as #52 |
+| Typespec + doc gaps | ✅ Same shape as #52 |
 | README refresh | ✅ Docs-only |
 | Padding dedup into `ABI.Math` | ✅ Mechanical refactor |
+| Credo strict style cleanup | ✅ Mechanical — upstream already has `strict: true` |
+| `is_dynamic?` → `dynamic?` rename | ✅ `@doc false` function — low risk with optional deprecation shim |
 | `decode_event/4` error contract | ⚠️ Arguable breaking change — discuss first |
 | `encode_packed` | ⚠️ Feature — issue first |
 | `decode_error/2` | ⚠️ Feature — issue first |
