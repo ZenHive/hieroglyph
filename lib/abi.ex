@@ -55,6 +55,7 @@ defmodule ABI do
       ...> |> Base.encode16(case: :lower)
       "b85d0bd200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001"
   """
+  @spec encode(binary() | ABI.FunctionSelector.t(), [any()]) :: binary()
   def encode(function_signature, data) when is_binary(function_signature) do
     encode(ABI.Parser.parse!(function_signature), data)
   end
@@ -96,12 +97,16 @@ defmodule ABI do
       ...> |> ABI.decode("00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001" |> Base.decode16!(case: :lower))
       [<<1::160>>, true]
   """
-  def decode(function_signature, data) when is_binary(function_signature) do
-    decode(ABI.FunctionSelector.decode(function_signature), data)
+  @spec decode(binary() | ABI.FunctionSelector.t(), binary(), keyword()) :: [any()]
+  def decode(function_signature, data, opts \\ [])
+
+  def decode(function_signature, data, opts) when is_binary(function_signature) do
+    decode(ABI.FunctionSelector.decode(function_signature), data, opts)
   end
 
-  def decode(%ABI.FunctionSelector{} = function_selector, data, opts \\ []) do
+  def decode(%ABI.FunctionSelector{} = function_selector, data, opts) do
     [res] = ABI.TypeDecoder.decode_raw(data, [%{type: {:tuple, function_selector.types}}], opts)
+
     if is_tuple(res) do
       Tuple.to_list(res)
     else
@@ -169,6 +174,8 @@ defmodule ABI do
           "to" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]
       }}
   """
+  @spec decode_event(binary() | ABI.FunctionSelector.t(), binary(), [binary()], keyword()) ::
+          {:ok, String.t(), map()} | {:error, term()}
   def decode_event(function_signature, data, topics, opts \\ [])
 
   def decode_event(function_signature, data, topics, opts) when is_binary(function_signature) do

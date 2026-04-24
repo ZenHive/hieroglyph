@@ -1,4 +1,12 @@
 defmodule ABI.Event do
+  @moduledoc """
+  Decodes Ethereum event log data into Solidity-typed arguments.
+
+  Splits the topic list (indexed parameters) from the data blob (non-indexed
+  parameters) per the ABI specification, and optionally verifies that
+  `topics[0]` matches the `keccak256` hash of the event signature.
+  """
+
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
 
@@ -119,17 +127,19 @@ defmodule ABI.Event do
         |> Enum.map(fn {res, %{name: name}} -> {name, res} end)
         |> Enum.into(%{})
 
-      indexed_data_res = if check_event_signature do
-        {event_signature, res} = Map.pop(indexed_data, "__abi__topic")
+      indexed_data_res =
+        if check_event_signature do
+          {event_signature, res} = Map.pop(indexed_data, "__abi__topic")
 
-        if event_signature == event_signature(function_selector) do
-          {:ok, res}
+          if event_signature == event_signature(function_selector) do
+            {:ok, res}
+          else
+            {:error,
+             "Mismatched event signature topic[0], expected=#{Base.encode16(event_signature(function_selector))}, got=#{Base.encode16(event_signature)}"}
+          end
         else
-          {:error, "Mismatched event signature topic[0], expected=#{Base.encode16(event_signature(function_selector))}, got=#{Base.encode16(event_signature)}"}
+          {:ok, indexed_data}
         end
-      else
-        {:ok, indexed_data}
-      end
 
       with {:ok, indexed_data_full} <- indexed_data_res do
         {:ok, function_selector.function, Map.merge(indexed_data_full, non_indexed_data_map)}
