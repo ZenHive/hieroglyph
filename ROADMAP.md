@@ -12,7 +12,7 @@
 
 ## 🎯 Current Focus
 
-Upstream bugs (#53, #54) pending maintainer response. Meanwhile, chipping away at the fork-only polish tracks: Credo strict cleanup, padding-helper refactor, and the round-trip property test suite.
+Upstream bugs (#53, #54) pending maintainer response. Fork-only polish: padding-helper extraction, `is_dynamic?` → `dynamic?` rename, and `mix credo --strict` cleanup all landed together on `zenhive` (see [CHANGELOG.md](CHANGELOG.md#unreleased)). Remaining fork-only item: the round-trip property test suite.
 
 ---
 
@@ -49,17 +49,14 @@ Upstream bugs (#53, #54) pending maintainer response. Meanwhile, chipping away a
 - [x] ✅ Refresh README [D:2/B:6/U:6 → Eff:3.0]
       Dropped stale tuple caveat, corrected `ABI.encode/2` arity and `bytes<M>` support marker, migrated `solidity.readthedocs.io` links to `docs.soliditylang.org`, and added runnable examples for `ABI.parse_specification/1`, `ABI.Event.decode_event/4`, and map/struct input to `encode/2`. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-- [ ] Extract padding helpers into `ABI.Math` [D:3/B:4/U:3 → Eff:1.17] 📋
-      Three stale TODOs (`type_encoder.ex:399`, `type_decoder.ex:324`, `type_decoder.ex:342`) point at this. Padding logic duplicated between encoder and decoder. Mechanical refactor, zero behavior change.
-      **Docs:** CHANGELOG entry; no README change (internal refactor).
+- [x] ✅ Extract padding helpers into `ABI.Math` [D:3/B:4/U:3 → Eff:1.17]
+      Added `ABI.Math.pad/4` and `ABI.Math.unpad/3`; `ABI.TypeEncoder` and `ABI.TypeDecoder` now delegate instead of duplicating the 32-byte byte-domain padding formula. Resolved the three `TODO: add to ABI.Math` comments. Zero behavior change. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-- [ ] Credo style cleanup (AliasUsage + MaxLineLength + ParameterPatternMatching + Nesting) [D:2/B:3/U:3 → Eff:1.5] 📋
-      50 mechanical `mix credo --strict` issues across `lib/` and `test/support/hex.ex`: 29 × `Design.AliasUsage` (add `alias ABI.FunctionSelector` / `alias ABI.Math` at module tops), 16 × `Readability.MaxLineLength` (wrap lines >80 chars), 3 × `Consistency.ParameterPatternMatching` (flip `record = %{...}` to `%{...} = record` in `function_selector.ex:304–312`), and 2 × `Refactor.Nesting` (split the deep `cond`-inside-`case` blocks at `event.ex:134` and `type_encoder.ex:461` into helpers). Zero behavior change. Upstream already opted into `strict: true` via `.credo.exs`, so this ships as one "Credo strict cleanup" PR. Excludes the 3 × `TagTODO` (tracked under padding refactor) and the 9 × `PredicateFunctionNames` hits (tracked as the `is_dynamic?` rename below).
-      **Docs:** CHANGELOG entry; no README change.
+- [x] ✅ Credo strict cleanup (AliasUsage + MaxLineLength + ParameterPatternMatching + Nesting) [D:2/B:3/U:3 → Eff:1.5]
+      `mix credo --strict` drove from 51 → 0. Added top-of-module aliases across `ABI`, `ABI.Event`, `ABI.FunctionSelector`, `ABI.Parser`, `ABI.TypeDecoder`, `ABI.TypeEncoder`, and `ABI.Hex`; wrapped long specs and refactored the `Enum.reduce` tuple-encoder into an `encode_tuple_element/2` helper; flipped three `record = %{…}` heads; extracted `ABI.Event.verify_event_signature/2` and `ABI.TypeEncoder.fetch_named_field/2` + `fetch_by_name/2` to drop nesting. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-- [ ] Rename `ABI.FunctionSelector.is_dynamic?/1` → `dynamic?/1` [D:2/B:3/U:2 → Eff:1.25] 📋
-      Function is already `@doc false` (documented as internal), only called from 3 internal sites (`type_encoder.ex:331,438`, `type_decoder.ex:273`). Credo's `PredicateFunctionNames` flags all 9 `def` clauses because the name starts with `is_`. Safe upstream PR; add a short deprecation shim (`defdelegate is_dynamic?/1, to: __MODULE__, as: :dynamic?` + `@deprecated`) if concerned about any downstream fork callers we can't see.
-      **Docs:** CHANGELOG entry (deprecation note if shim is added); no README change.
+- [x] ✅ Rename `ABI.FunctionSelector.is_dynamic?/1` → `dynamic?/1` [D:2/B:3/U:2 → Eff:1.25]
+      Renamed all 9 clause heads, the `@spec`, and the 2 recursive self-calls, plus the 3 private call-sites in `ABI.TypeDecoder` / `ABI.TypeEncoder`. No deprecation shim — `@doc false` since 2017, zero in-repo external callers, and a `defdelegate` shim would recreate the exact `PredicateFunctionNames` violation we were eliminating. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 ---
 
@@ -94,9 +91,9 @@ Upstream bugs (#53, #54) pending maintainer response. Meanwhile, chipping away a
 | Round-trip tests | ✅ Pure addition |
 | Typespec + doc gaps | ✅ Same shape as #52 |
 | README refresh | ✅ Docs-only |
-| Padding dedup into `ABI.Math` | ✅ Mechanical refactor |
-| Credo strict style cleanup | ✅ Mechanical — upstream already has `strict: true` |
-| `is_dynamic?` → `dynamic?` rename | ✅ `@doc false` function — low risk with optional deprecation shim |
+| Padding dedup into `ABI.Math` | ✅ Shipped locally on `zenhive`, ready for upstream PR |
+| Credo strict style cleanup | ✅ Shipped locally on `zenhive`, ready for upstream PR |
+| `is_dynamic?` → `dynamic?` rename | ✅ Shipped locally on `zenhive`, ready for upstream PR (optional deprecation shim can be added during review) |
 | `decode_event/4` error contract | ⚠️ Arguable breaking change — discuss first |
 | `encode_packed` | ⚠️ Feature — issue first |
 | `decode_error/2` | ⚠️ Feature — issue first |

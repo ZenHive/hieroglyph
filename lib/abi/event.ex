@@ -7,6 +7,10 @@ defmodule ABI.Event do
   `topics[0]` matches the `keccak256` hash of the event signature.
   """
 
+  alias ABI.FunctionSelector
+  alias ABI.Math
+  alias ABI.TypeDecoder
+
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
 
@@ -90,7 +94,7 @@ defmodule ABI.Event do
           "to" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]
       }}
   """
-  @spec decode_event(binary(), [binary()], ABI.FunctionSelector.t(), keyword()) ::
+  @spec decode_event(binary(), [binary()], FunctionSelector.t(), keyword()) ::
           {:ok, String.t() | nil, map()} | {:error, String.t()}
   def decode_event(data, topics, function_selector, opts \\ []) do
     check_event_signature = Keyword.get(opts, :check_event_signature, true)
@@ -106,39 +110,27 @@ defmodule ABI.Event do
         indexed_types
       end
 
-    if Enum.count(indexed_types_full) != Enum.count(topics) do
-      {:error,
-       "Invalid topics length (got=#{Enum.count(topics)}, expected=#{Enum.count(indexed_types_full)}), consider toggling `check_event_signature`"}
-    else
+    if Enum.count(indexed_types_full) == Enum.count(topics) do
       indexed_data =
         indexed_types_full
         |> Enum.zip(topics)
-        |> Enum.map(fn {type, topic} ->
-          [value] = ABI.TypeDecoder.decode_raw(topic, [type])
+        |> Map.new(fn {type, topic} ->
+          [value] = TypeDecoder.decode_raw(topic, [type])
           {type.name, value}
         end)
-        |> Enum.into(%{})
 
       [non_indexed_data] =
-        ABI.TypeDecoder.decode_raw(data, [%{type: {:tuple, non_indexed_types}}])
+        TypeDecoder.decode_raw(data, [%{type: {:tuple, non_indexed_types}}])
 
       non_indexed_data_map =
         non_indexed_data
         |> Tuple.to_list()
         |> Enum.zip(non_indexed_types)
-        |> Enum.map(fn {res, %{name: name}} -> {name, res} end)
-        |> Enum.into(%{})
+        |> Map.new(fn {res, %{name: name}} -> {name, res} end)
 
       indexed_data_res =
         if check_event_signature do
-          {event_signature, res} = Map.pop(indexed_data, "__abi__topic")
-
-          if event_signature == event_signature(function_selector) do
-            {:ok, res}
-          else
-            {:error,
-             "Mismatched event signature topic[0], expected=#{Base.encode16(event_signature(function_selector))}, got=#{Base.encode16(event_signature)}"}
-          end
+          verify_event_signature(indexed_data, function_selector)
         else
           {:ok, indexed_data}
         end
@@ -146,6 +138,21 @@ defmodule ABI.Event do
       with {:ok, indexed_data_full} <- indexed_data_res do
         {:ok, function_selector.function, Map.merge(indexed_data_full, non_indexed_data_map)}
       end
+    else
+      {:error,
+       "Invalid topics length (got=#{Enum.count(topics)}, expected=#{Enum.count(indexed_types_full)}), consider toggling `check_event_signature`"}
+    end
+  end
+
+  defp verify_event_signature(indexed_data, function_selector) do
+    {event_signature, res} = Map.pop(indexed_data, "__abi__topic")
+    expected = event_signature(function_selector)
+
+    if event_signature == expected do
+      {:ok, res}
+    else
+      {:error,
+       "Mismatched event signature topic[0], expected=#{Base.encode16(expected)}, got=#{Base.encode16(event_signature)}"}
     end
   end
 
@@ -168,11 +175,11 @@ defmodule ABI.Event do
       ...> |> to_hex()
       "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
   """
-  @spec event_signature(ABI.FunctionSelector.t()) :: binary()
+  @spec event_signature(FunctionSelector.t()) :: binary()
   def event_signature(function_selector) do
     function_selector
-    |> ABI.FunctionSelector.encode()
-    |> ABI.Math.kec()
+    |> FunctionSelector.encode()
+    |> Math.kec()
   end
 
   @doc ~S"""
@@ -233,11 +240,11 @@ defmodule ABI.Event do
       ...> )
       "Transfer(address indexed from,address indexed to,uint256 amount)"
   """
-  @spec canonical(ABI.FunctionSelector.t(), keyword()) :: String.t()
+  @spec canonical(FunctionSelector.t(), keyword()) :: String.t()
   def canonical(function_selector, opts \\ []) do
     indexed = Keyword.get(opts, :indexed, false)
     names = Keyword.get(opts, :names, false)
 
-    ABI.FunctionSelector.encode(function_selector, indexed, names)
+    FunctionSelector.encode(function_selector, indexed, names)
   end
 end

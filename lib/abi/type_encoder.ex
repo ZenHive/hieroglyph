@@ -5,6 +5,9 @@ defmodule ABI.TypeEncoder do
   array of data and encode that array according to the specification.
   """
 
+  alias ABI.FunctionSelector
+  alias ABI.Math
+
   @doc """
   Encodes the given data based on the function selector.
 
@@ -216,16 +219,17 @@ defmodule ABI.TypeEncoder do
       ...> |> Base.encode16(case: :lower)
       "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01"
   """
-  @spec encode([any()], ABI.FunctionSelector.t()) :: binary()
+  @spec encode([any()], FunctionSelector.t()) :: binary()
   def encode(data, function_selector) do
-    encode_method_id(function_selector) <> do_encode_data(data, function_selector)
+    encode_method_id(function_selector) <>
+      do_encode_data(data, function_selector)
   end
 
-  defp do_encode_data(data, %ABI.FunctionSelector{function: nil} = function_selector) do
+  defp do_encode_data(data, %FunctionSelector{function: nil} = function_selector) do
     encode_raw(data, function_selector.types)
   end
 
-  defp do_encode_data(data, %ABI.FunctionSelector{} = function_selector) do
+  defp do_encode_data(data, %FunctionSelector{} = function_selector) do
     encode_raw([List.to_tuple(data)], [%{type: {:tuple, function_selector.types}}])
   end
 
@@ -241,20 +245,20 @@ defmodule ABI.TypeEncoder do
       ...> |> Base.encode16(case: :lower)
       "000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000007617765736f6d6500000000000000000000000000000000000000000000000000"
   """
-  @spec encode_raw([any()], [ABI.FunctionSelector.argument_type()]) :: binary()
+  @spec encode_raw([any()], [FunctionSelector.argument_type()]) :: binary()
   def encode_raw(data, types) do
     do_encode(types, data, [])
   end
 
-  @spec encode_method_id(ABI.FunctionSelector.t()) :: binary()
-  defp encode_method_id(%ABI.FunctionSelector{function: nil}), do: ""
+  @spec encode_method_id(FunctionSelector.t()) :: binary()
+  defp encode_method_id(%FunctionSelector{function: nil}), do: ""
 
   defp encode_method_id(function_selector) do
     # Encode selector e.g. "baz(uint32,bool)" and take keccak
     kec =
       function_selector
-      |> ABI.FunctionSelector.encode()
-      |> ABI.Math.kec()
+      |> FunctionSelector.encode()
+      |> Math.kec()
 
     # Take first four bytes
     <<init::binary-size(4), _rest::binary>> = kec
@@ -263,7 +267,8 @@ defmodule ABI.TypeEncoder do
     init
   end
 
-  @spec do_encode([ABI.FunctionSelector.argument_type()], [any()], [binary()]) :: binary()
+  @spec do_encode([FunctionSelector.argument_type()], [any()], [binary()]) ::
+          binary()
   defp do_encode([], _, acc), do: :erlang.iolist_to_binary(Enum.reverse(acc))
 
   defp do_encode([type | remaining_types], data, acc) do
@@ -272,7 +277,7 @@ defmodule ABI.TypeEncoder do
     do_encode(remaining_types, remaining_data, [encoded | acc])
   end
 
-  @spec encode_type(ABI.FunctionSelector.type(), [any()]) :: {binary(), [any()]}
+  @spec encode_type(FunctionSelector.type(), [any()]) :: {binary(), [any()]}
   defp encode_type({:uint, size}, [data | rest]) do
     {encode_uint(data, size), rest}
   end
@@ -302,8 +307,7 @@ defmodule ABI.TypeEncoder do
     {encode_uint(byte_size(data), 256) <> encode_bytes(data), rest}
   end
 
-  defp encode_type({:bytes, size}, [data | rest])
-       when is_binary(data) and byte_size(data) <= size do
+  defp encode_type({:bytes, size}, [data | rest]) when is_binary(data) and byte_size(data) <= size do
     {encode_bytes(data), rest}
   end
 
@@ -320,24 +324,9 @@ defmodule ABI.TypeEncoder do
     # `count(types)` of them, so the tail starts at `32 * count(types)`.
     # Note: `count(types)` accounts for inlined tuples.
     tail_start = count(types) * 32
+    initial_acc = {<<>>, <<>>, data_to_list(types, data), tail_start}
 
-    {head, tail, [], _} =
-      Enum.reduce(types, {<<>>, <<>>, data_to_list(types, data), tail_start}, fn argument_type,
-                                                                                 {head, tail,
-                                                                                  data,
-                                                                                  tail_position} ->
-        type = argument_type.type
-        {el, rest} = encode_type(type, data)
-
-        if ABI.FunctionSelector.is_dynamic?(type) do
-          # If we're a dynamic type, just encoded the length to head and the element to body
-          {head <> encode_uint(tail_position, 256), tail <> el, rest,
-           tail_position + byte_size(el)}
-        else
-          # If we're a static type, simply encode the el to the head
-          {head <> el, tail, rest, tail_position}
-        end
-      end)
+    {head, tail, [], _} = Enum.reduce(types, initial_acc, &encode_tuple_element/2)
 
     {head <> tail, rest}
   end
@@ -350,7 +339,7 @@ defmodule ABI.TypeEncoder do
         Enum.map(1..element_count, fn _ -> %{type: type} end)
       end
 
-    encode_type({:tuple, repeated_type}, [data |> List.to_tuple() | rest])
+    encode_type({:tuple, repeated_type}, [List.to_tuple(data) | rest])
   end
 
   defp encode_type({:array, type}, [data | _rest] = all_data) do
@@ -366,12 +355,31 @@ defmodule ABI.TypeEncoder do
     raise "Unsupported encoding type: #{inspect(els)}"
   end
 
-  def encode_bytes(bytes) do
-    bytes |> pad(byte_size(bytes), :right)
+  defp encode_tuple_element(argument_type, {head, tail, data, tail_position}) do
+    type = argument_type.type
+    {el, rest} = encode_type(type, data)
+
+    if FunctionSelector.dynamic?(type) do
+      # Dynamic type: write offset into head, element bytes into tail.
+      {
+        head <> encode_uint(tail_position, 256),
+        tail <> el,
+        rest,
+        tail_position + byte_size(el)
+      }
+    else
+      # Static type: element goes directly into head.
+      {head <> el, tail, rest, tail_position}
+    end
   end
 
-  defp encode_int(int, desired_size_bits)
-       when rem(desired_size_bits, 8) == 0 and is_integer(int) do
+  @doc false
+  @spec encode_bytes(binary()) :: binary()
+  def encode_bytes(bytes) do
+    Math.pad(bytes, byte_size(bytes), :right)
+  end
+
+  defp encode_int(int, desired_size_bits) when rem(desired_size_bits, 8) == 0 and is_integer(int) do
     desired_size_bytes = ceil(desired_size_bits / 8)
 
     sign_byte = if(int < 0, do: <<0xFF>>, else: <<0x00>>)
@@ -381,51 +389,27 @@ defmodule ABI.TypeEncoder do
         maybe_encode_unsigned(abs(int))
       else
         # two's complement encoding: 2**(integer_bit_size) - abs(integer)
-        actual_bit_size = :binary.encode_unsigned(-1 * int) |> bit_size()
+        actual_bit_size = (-1 * int) |> :binary.encode_unsigned() |> bit_size()
         maybe_encode_unsigned(2 ** actual_bit_size + int)
       end
 
     if byte_size(significant_bytes) > desired_size_bytes - 1 do
-      raise(
-        "Data overflow encoding int, data `#{int}` cannot fit in #{(desired_size_bytes - 1) * 8} bits"
-      )
+      raise("Data overflow encoding int, data `#{int}` cannot fit in #{(desired_size_bytes - 1) * 8} bits")
     end
 
-    pad(significant_bytes, desired_size_bytes, :left, fill_byte: sign_byte)
+    Math.pad(significant_bytes, desired_size_bytes, :left, fill_byte: sign_byte)
   end
 
   # Note, we'll accept a binary or an integer here, so long as the
   # binary is not longer than our allowed data size
   defp encode_uint(data, size_in_bits) when rem(size_in_bits, 8) == 0 do
-    size_in_bytes = (size_in_bits / 8) |> round
+    size_in_bytes = round(size_in_bits / 8)
     bin = maybe_encode_unsigned(data)
 
     if byte_size(bin) > size_in_bytes,
-      do:
-        raise(
-          "Data overflow encoding uint, data `#{data}` cannot fit in #{size_in_bytes * 8} bits"
-        )
+      do: raise("Data overflow encoding uint, data `#{data}` cannot fit in #{size_in_bytes * 8} bits")
 
-    bin |> pad(size_in_bytes, :left)
-  end
-
-  defp pad(bin, size_in_bytes, direction, opts \\ []) do
-    fill_byte = Keyword.get(opts, :fill_byte, <<0x00>>)
-
-    # TODO: Create `left_pad` repo, err, add to `ABI.Math`
-    total_size = size_in_bytes + ABI.Math.mod(32 - ABI.Math.mod(size_in_bytes, 32), 32)
-
-    padding_size_bytes = total_size - byte_size(bin)
-
-    padding =
-      Stream.duplicate(fill_byte, padding_size_bytes)
-      |> Enum.to_list()
-      |> :binary.list_to_bin()
-
-    case direction do
-      :left -> padding <> bin
-      :right -> bin <> padding
-    end
+    Math.pad(bin, size_in_bytes, :left)
   end
 
   # Returns the total number of static types, accounting for inlined tuples
@@ -435,8 +419,8 @@ defmodule ABI.TypeEncoder do
     |> Enum.sum()
   end
 
-  defp do_count(%{type: t = {:tuple, sub_types}}) do
-    if ABI.FunctionSelector.is_dynamic?(t) do
+  defp do_count(%{type: {:tuple, sub_types} = t}) do
+    if FunctionSelector.dynamic?(t) do
       1
     else
       sub_types
@@ -450,29 +434,36 @@ defmodule ABI.TypeEncoder do
   defp data_to_list(_types, data) when is_list(data), do: data
   defp data_to_list(_types, data) when is_tuple(data), do: Tuple.to_list(data)
 
+  defp data_to_list(types, data) when is_map(data) do
+    Enum.map(types, &fetch_named_field(&1, data))
+  end
+
+  defp fetch_named_field(type, data) do
+    if type[:name] do
+      fetch_by_name(type, data)
+    else
+      raise "Cannot decode struct with map when no name given in type `#{inspect(type)}`\n\n\tfor data:\n\n\t#{inspect(data)}"
+    end
+  end
+
   # Field name comes from the ABI specification (trusted contract metadata),
   # not arbitrary runtime input. Atom creation is bounded by the set of
   # field names declared across all ABIs the consumer loads.
   # sobelow_skip ["DOS.StringToAtom"]
-  defp data_to_list(types, data) when is_map(data) do
-    Enum.map(types, fn type ->
-      if type[:name] do
-        atom_name = String.to_atom(Macro.underscore(type[:name]))
+  defp fetch_by_name(type, data) do
+    name = type[:name]
+    atom_name = String.to_atom(Macro.underscore(name))
 
-        cond do
-          Map.has_key?(data, type[:name]) ->
-            Map.fetch!(data, type[:name])
+    cond do
+      Map.has_key?(data, name) ->
+        Map.fetch!(data, name)
 
-          Map.has_key?(data, atom_name) ->
-            Map.fetch!(data, atom_name)
+      Map.has_key?(data, atom_name) ->
+        Map.fetch!(data, atom_name)
 
-          true ->
-            raise "Cannot find key `:#{atom_name}` or `\"#{type[:name]}\"` for type `#{inspect(type)}`\n\n\tin data:\n\n\t#{inspect(data)}"
-        end
-      else
-        raise "Cannot decode struct with map when no name given in type `#{inspect(type)}`\n\n\tfor data:\n\n\t#{inspect(data)}"
-      end
-    end)
+      true ->
+        raise "Cannot find key `:#{atom_name}` or `\"#{name}\"` for type `#{inspect(type)}`\n\n\tin data:\n\n\t#{inspect(data)}"
+    end
   end
 
   @spec maybe_encode_unsigned(binary() | integer()) :: binary()

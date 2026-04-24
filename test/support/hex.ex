@@ -4,6 +4,7 @@ defmodule ABI.Hex do
   """
 
   defmodule HexError do
+    @moduledoc false
     defexception message: "invalid hex"
   end
 
@@ -11,11 +12,12 @@ defmodule ABI.Hex do
 
   defmacro __using__(_opts) do
     quote do
-      require ABI.Hex
-      alias ABI.Hex
-
       import ABI.Hex,
         only: [sigil_h: 2, hex!: 1, to_hex: 1, from_hex: 1, from_hex!: 1]
+
+      alias ABI.Hex
+
+      require Hex
     end
   end
 
@@ -39,7 +41,7 @@ defmodule ABI.Hex do
   defmacro sigil_h({:<<>>, _meta, [string]}, _modifiers = []) when is_binary(string) do
     hex_str = :elixir_interpolation.unescape_string(string)
 
-    ABI.Hex.decode_hex!(hex_str)
+    decode_hex!(hex_str)
   end
 
   @doc ~S"""
@@ -56,7 +58,7 @@ defmodule ABI.Hex do
       <<0x22, 0x44>>
   """
   defmacro hex!(hex_str) when is_binary(hex_str) do
-    ABI.Hex.decode_hex!(hex_str)
+    decode_hex!(hex_str)
   end
 
   @doc """
@@ -173,7 +175,8 @@ defmodule ABI.Hex do
     iex> ABI.Hex.decode_sized!("0xaabb", 3)
     ** (ABI.Hex.HexError) invalid 3-byte sized hex: "0xaabb"
   """
-  @spec decode_sized!(String.t(), integer(), String.t() | nil) :: t() | no_return()
+  @spec decode_sized!(String.t(), integer(), String.t() | nil) ::
+          t() | no_return()
   def decode_sized!(hex, sz, msg \\ nil) do
     res = decode_hex!(hex)
 
@@ -352,7 +355,7 @@ defmodule ABI.Hex do
       end
 
     case Base.decode16(hex_padded, case: :mixed) do
-      res = {:ok, _} ->
+      {:ok, _} = res ->
         res
 
       :error ->
@@ -364,8 +367,7 @@ defmodule ABI.Hex do
   def deep_encode_binaries(x) when is_binary(x), do: to_hex(x)
   def deep_encode_binaries(l) when is_list(l), do: Enum.map(l, &deep_encode_binaries/1)
 
-  def deep_encode_binaries(t) when is_tuple(t),
-    do: List.to_tuple(Enum.map(Tuple.to_list(t), &deep_encode_binaries/1))
+  def deep_encode_binaries(t) when is_tuple(t), do: List.to_tuple(Enum.map(Tuple.to_list(t), &deep_encode_binaries/1))
 
   def deep_encode_binaries(els), do: els
 end

@@ -20,6 +20,7 @@ defmodule ABI.Math do
       iex> ABI.Math.mod(0, 1337)
       0
   """
+  @spec mod(integer(), pos_integer()) :: non_neg_integer()
   def mod(x, n) when x > 0, do: rem(x, n)
   def mod(x, n) when x < 0, do: rem(n + x, n)
   def mod(0, _n), do: 0
@@ -42,5 +43,95 @@ defmodule ABI.Math do
   @spec kec(binary()) :: binary()
   def kec(data) do
     ExSha3.keccak_256(data)
+  end
+
+  @doc """
+  Pads a binary up to the next 32-byte ABI word boundary.
+
+  `size_in_bytes` is the **logical field width** used to compute the word
+  boundary — not necessarily `byte_size(bin)`. The output is always rounded
+  up from `size_in_bytes` to a 32-byte multiple. `bin` may be shorter than
+  `size_in_bytes` (callers like `encode_int`/`encode_uint` pass a target
+  slot size and let padding absorb the difference); `encode_bytes` passes
+  `byte_size(bin)` directly.
+
+  `direction` is `:left` for left-aligned types like `uint`/`int`/`address`,
+  `:right` for right-padded types like `bytes<M>` and `string`. Pass
+  `fill_byte: <<0xFF>>` for signed sign-extension; defaults to `<<0x00>>`.
+
+  ## Examples
+
+      iex> ABI.Math.pad(<<1, 2, 3>>, 3, :left)
+      <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3>>
+
+      iex> ABI.Math.pad(<<1, 2, 3>>, 3, :right)
+      <<1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
+  """
+  @spec pad(binary(), non_neg_integer(), :left | :right, keyword()) :: binary()
+  def pad(bin, size_in_bytes, direction, opts \\ []) do
+    fill_byte = Keyword.get(opts, :fill_byte, <<0x00>>)
+
+    total_size = size_in_bytes + mod(32 - mod(size_in_bytes, 32), 32)
+
+    padding_size_bytes = total_size - byte_size(bin)
+
+    padding =
+      fill_byte
+      |> Stream.duplicate(padding_size_bytes)
+      |> Enum.to_list()
+      |> :binary.list_to_bin()
+
+    case direction do
+      :left -> padding <> bin
+      :right -> bin <> padding
+    end
+  end
+
+  @doc """
+  Inverse of `pad/4`. Reads `size_in_bytes` of content out of `data`,
+  skipping 32-byte-slot padding on the side matching `padding_direction`
+  (`:left` for left-padded types like `address`, `:right` for right-padded
+  types like `bytes<M>` and `string`). Returns `{value, rest}`, where
+  `rest` is whatever follows the padded word in `data`.
+
+  ## Examples
+
+      iex> ABI.Math.unpad(
+      ...>   <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...>     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3>>,
+      ...>   3,
+      ...>   :left
+      ...> )
+      {<<1, 2, 3>>, <<>>}
+
+      iex> ABI.Math.unpad(
+      ...>   <<1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...>     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...>     9, 9>>,
+      ...>   3,
+      ...>   :right
+      ...> )
+      {<<1, 2, 3>>, <<9, 9>>}
+  """
+  @spec unpad(binary(), non_neg_integer(), :left | :right) ::
+          {binary(), binary()}
+  def unpad(data, size_in_bytes, padding_direction) do
+    total_size_in_bytes = size_in_bytes + mod(32 - mod(size_in_bytes, 32), 32)
+
+    padding_size_in_bytes = total_size_in_bytes - size_in_bytes
+
+    case padding_direction do
+      :left ->
+        <<_::binary-size(^padding_size_in_bytes), after_pad::binary>> = data
+        <<value::binary-size(^size_in_bytes), rest::binary>> = after_pad
+        {value, rest}
+
+      :right ->
+        <<value::binary-size(^size_in_bytes), after_value::binary>> = data
+        <<_::binary-size(^padding_size_in_bytes), rest::binary>> = after_value
+        {value, rest}
+    end
   end
 end

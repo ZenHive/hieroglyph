@@ -1,7 +1,10 @@
 defmodule ABI.Parser do
   @moduledoc false
 
+  alias ABI.FunctionSelector
+
   @doc false
+  @spec parse!(String.t(), keyword()) :: FunctionSelector.type() | FunctionSelector.t()
   def parse!(str, opts \\ []) do
     {:ok, tokens, _} = str |> String.to_charlist() |> :ethereum_abi_lexer.string()
 
@@ -16,7 +19,7 @@ defmodule ABI.Parser do
 
     case ast do
       {:type, type} -> type
-      {:selector, selector_parts} -> struct!(ABI.FunctionSelector, selector_parts)
+      {:selector, selector_parts} -> struct!(FunctionSelector, selector_parts)
     end
   end
 end

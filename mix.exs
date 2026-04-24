@@ -45,13 +45,13 @@ defmodule ABI.Mixfile do
   end
 
   # Run "mix help deps" to learn about dependencies.
-  # NOTE: do not add :styler or :descripex — intentionally excluded.
   defp deps do
     [
       {:jason, "~> 1.4"},
       {:ex_sha3, "~> 0.1.4"},
       {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
+      {:styler, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

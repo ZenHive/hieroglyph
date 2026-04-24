@@ -4,6 +4,8 @@ defmodule ABI.FunctionSelector do
   `my_function(uint64, string[])`.
   """
 
+  alias ABI.Parser
+
   @type type ::
           {:uint, integer()}
           | :bool
@@ -16,9 +18,14 @@ defmodule ABI.FunctionSelector do
           | {:tuple, [argument_type]}
 
   @type argument_type ::
-          %{:type => type, optional(:name) => String.t(), optional(:indexed) => boolean()}
+          %{
+            :type => type,
+            optional(:name) => String.t(),
+            optional(:indexed) => boolean()
+          }
 
-  @type function_type :: :function | :constructor | :fallback | :receive | :error | :event
+  @type function_type ::
+          :function | :constructor | :fallback | :receive | :error | :event
 
   @type state_mutability :: :nonpayable | :pure | :view | :payable
 
@@ -129,7 +136,7 @@ defmodule ABI.FunctionSelector do
   """
   @spec decode(String.t()) :: t()
   def decode(signature) do
-    ABI.Parser.parse!(signature, as: :selector)
+    Parser.parse!(signature, as: :selector)
   end
 
   @doc """
@@ -287,13 +294,11 @@ defmodule ABI.FunctionSelector do
 
     output_types =
       if Map.has_key?(item, "outputs"),
-        do: Enum.map(item["outputs"], &parse_specification_type/1),
-        else: nil
+        do: Enum.map(item["outputs"], &parse_specification_type/1)
 
     state_mutability =
       if Map.has_key?(item, "stateMutability"),
-        do: get_state_mutability(item["stateMutability"]),
-        else: nil
+        do: get_state_mutability(item["stateMutability"])
 
     %ABI.FunctionSelector{
       function: Map.get(item, "name", nil),
@@ -304,15 +309,15 @@ defmodule ABI.FunctionSelector do
     }
   end
 
-  defp parse_specification_type(record = %{"name" => name, "indexed" => indexed}) do
+  defp parse_specification_type(%{"name" => name, "indexed" => indexed} = record) do
     %{name: name, type: parse_specification_type_type(record), indexed: indexed}
   end
 
-  defp parse_specification_type(record = %{"indexed" => indexed}) do
+  defp parse_specification_type(%{"indexed" => indexed} = record) do
     %{type: parse_specification_type_type(record), indexed: indexed}
   end
 
-  defp parse_specification_type(record = %{"name" => name}) do
+  defp parse_specification_type(%{"name" => name} = record) do
     %{name: name, type: parse_specification_type_type(record)}
   end
 
@@ -348,7 +353,7 @@ defmodule ABI.FunctionSelector do
   """
   @spec decode_type(String.t()) :: type()
   def decode_type(single_type) do
-    ABI.Parser.parse!(single_type, as: :type)
+    Parser.parse!(single_type, as: :type)
   end
 
   @doc """
@@ -419,13 +424,13 @@ defmodule ABI.FunctionSelector do
   """
   @spec encode(t(), boolean(), boolean()) :: String.t()
   def encode(function_selector, indexed \\ false, names \\ false) do
-    types = get_types(function_selector, indexed, names) |> Enum.join(",")
+    types = function_selector |> get_types(indexed, names) |> Enum.join(",")
 
     "#{function_selector.function}(#{types})"
   end
 
   defp get_types(function_selector, indexed, names) do
-    for {t = %{type: type}, i} <- Enum.with_index(function_selector.types) do
+    for {%{type: type} = t, i} <- Enum.with_index(function_selector.types) do
       indexed_postfix = if indexed and Map.get(t, :indexed, false), do: " indexed", else: ""
       name_postfix = if names, do: " #{Map.get(t, :name, "var#{i}")}", else: ""
       "#{get_type(type)}#{indexed_postfix}#{name_postfix}"
@@ -461,20 +466,19 @@ defmodule ABI.FunctionSelector do
   defp get_type(els), do: raise("Unsupported type: #{inspect(els)}")
 
   @doc false
-  @spec is_dynamic?(ABI.FunctionSelector.type()) :: boolean
-  def is_dynamic?(:bytes), do: true
-  def is_dynamic?(:string), do: true
-  def is_dynamic?({:array, _type}), do: true
-  def is_dynamic?({:array, type, len}) when len > 0, do: is_dynamic?(type)
+  @spec dynamic?(ABI.FunctionSelector.type()) :: boolean
+  def dynamic?(:bytes), do: true
+  def dynamic?(:string), do: true
+  def dynamic?({:array, _type}), do: true
+  def dynamic?({:array, type, len}) when len > 0, do: dynamic?(type)
 
-  def is_dynamic?({:tuple, types}),
-    do: Enum.any?(types, fn arg_type -> is_dynamic?(arg_type.type) end)
+  def dynamic?({:tuple, types}), do: Enum.any?(types, fn arg_type -> dynamic?(arg_type.type) end)
 
-  def is_dynamic?({:bytes, _}), do: false
-  def is_dynamic?({:int, _}), do: false
-  def is_dynamic?({:uint, _}), do: false
-  def is_dynamic?(:bool), do: false
-  def is_dynamic?(:address), do: false
+  def dynamic?({:bytes, _}), do: false
+  def dynamic?({:int, _}), do: false
+  def dynamic?({:uint, _}), do: false
+  def dynamic?(:bool), do: false
+  def dynamic?(:address), do: false
 
   @doc false
   @spec get_function_type(String.t()) :: function_type()

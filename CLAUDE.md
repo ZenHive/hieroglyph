@@ -35,6 +35,15 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 
 See [ROADMAP.md](ROADMAP.md) for the current punch list (bugs, test debt, feature gaps).
 
+## Parked: Potential Rename to `hieroglyph`
+
+Mirrors the `signet → cartouche` Egyptian-naming pattern (a cartouche literally contains hieroglyphs). Not urgent, not decided — parked here so a future session doesn't re-litigate the naming search.
+
+- **Hex:** `hieroglyph` is free on hex.pm (checked 2026-04-24).
+- **GitHub:** `github.com/hieroglyph` exists as a user/org, but zero Elixir repos match — publish under our own org (`github.com/<owner>/hieroglyph`), not as a new top-level org, and there's no collision.
+- **Scope if we go:** rename repo + hex package only. **Keep `ABI` as the top-level module name** — it's the actual Solidity term and renaming hurts callsite discoverability. Consumers still call `ABI.encode/2`.
+- **Also-free alternatives considered:** `rosetta_stone` (most semantically precise but two-word ergonomic tax), `stele`, `papyrus`. `rosetta` itself is taken (Gleam stdlib port).
+
 ## Upstream Issue Monitoring
 
 **No upstream gating.** This fork lives in a dependency chain — our own libraries (signet, internal transaction builders) depend on it and can't wait for `exthereum/abi` maintainers to respond. Policy: file issues and PRs upstream (we *want* to contribute back to the originals), then ship the fix here immediately. Upstream acceptance is a bonus, not a prerequisite. If maintainers land a different fix later, we reconcile on their merge — not before.

@@ -5,6 +5,12 @@ defmodule ABI do
   it to or from types that Solidity understands.
   """
 
+  alias ABI.Event
+  alias ABI.FunctionSelector
+  alias ABI.Parser
+  alias ABI.TypeDecoder
+  alias ABI.TypeEncoder
+
   @doc """
   Encodes the given data into the function signature or tuple signature.
 
@@ -55,13 +61,13 @@ defmodule ABI do
       ...> |> Base.encode16(case: :lower)
       "b85d0bd200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001"
   """
-  @spec encode(binary() | ABI.FunctionSelector.t(), [any()]) :: binary()
+  @spec encode(binary() | FunctionSelector.t(), [any()]) :: binary()
   def encode(function_signature, data) when is_binary(function_signature) do
-    encode(ABI.Parser.parse!(function_signature), data)
+    encode(Parser.parse!(function_signature), data)
   end
 
-  def encode(%ABI.FunctionSelector{} = function_selector, data) do
-    ABI.TypeEncoder.encode(data, function_selector)
+  def encode(%FunctionSelector{} = function_selector, data) do
+    TypeEncoder.encode(data, function_selector)
   end
 
   @doc """
@@ -100,15 +106,16 @@ defmodule ABI do
       iex> ABI.decode("(uint256 a,bool b)", "000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000001" |> Base.decode16!(case: :lower), decode_structs: true)
       %{a: 10, b: true}
   """
-  @spec decode(binary() | ABI.FunctionSelector.t(), binary(), keyword()) :: [any()] | map()
+  @spec decode(binary() | FunctionSelector.t(), binary(), keyword()) ::
+          [any()] | map()
   def decode(function_signature, data, opts \\ [])
 
   def decode(function_signature, data, opts) when is_binary(function_signature) do
-    decode(ABI.FunctionSelector.decode(function_signature), data, opts)
+    decode(FunctionSelector.decode(function_signature), data, opts)
   end
 
-  def decode(%ABI.FunctionSelector{} = function_selector, data, opts) do
-    [res] = ABI.TypeDecoder.decode_raw(data, [%{type: {:tuple, function_selector.types}}], opts)
+  def decode(%FunctionSelector{} = function_selector, data, opts) do
+    [res] = TypeDecoder.decode_raw(data, [%{type: {:tuple, function_selector.types}}], opts)
 
     if is_tuple(res) do
       Tuple.to_list(res)
@@ -177,16 +184,20 @@ defmodule ABI do
           "to" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]
       }}
   """
-  @spec decode_event(binary() | ABI.FunctionSelector.t(), binary(), [binary()], keyword()) ::
-          {:ok, String.t() | nil, map()} | {:error, term()}
+  @spec decode_event(
+          binary() | FunctionSelector.t(),
+          binary(),
+          [binary()],
+          keyword()
+        ) :: {:ok, String.t() | nil, map()} | {:error, term()}
   def decode_event(function_signature, data, topics, opts \\ [])
 
   def decode_event(function_signature, data, topics, opts) when is_binary(function_signature) do
-    decode_event(ABI.FunctionSelector.decode(function_signature), data, topics, opts)
+    decode_event(FunctionSelector.decode(function_signature), data, topics, opts)
   end
 
-  def decode_event(%ABI.FunctionSelector{} = function_selector, data, topics, opts) do
-    ABI.Event.decode_event(data, topics, function_selector, opts)
+  def decode_event(%FunctionSelector{} = function_selector, data, topics, opts) do
+    Event.decode_event(data, topics, function_selector, opts)
   end
 
   @doc """
@@ -198,13 +209,13 @@ defmodule ABI do
       ...> |> Base.encode16(case: :lower)
       "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
   """
-  @spec event_signature(binary() | ABI.FunctionSelector.t()) :: binary()
+  @spec event_signature(binary() | FunctionSelector.t()) :: binary()
   def event_signature(function_signature) when is_binary(function_signature) do
-    event_signature(ABI.FunctionSelector.decode(function_signature))
+    event_signature(FunctionSelector.decode(function_signature))
   end
 
-  def event_signature(%ABI.FunctionSelector{} = function_selector) do
-    ABI.Event.event_signature(function_selector)
+  def event_signature(%FunctionSelector{} = function_selector) do
+    Event.event_signature(function_selector)
   end
 
   @doc """
@@ -264,10 +275,10 @@ defmodule ABI do
       ...> |> ABI.parse_specification
       [%ABI.FunctionSelector{function: nil, function_type: :fallback, state_mutability: :nonpayable, returns: nil, types: []}]
   """
-  @spec parse_specification([map()]) :: [ABI.FunctionSelector.t()]
+  @spec parse_specification([map()]) :: [FunctionSelector.t()]
   def parse_specification(doc) do
     doc
-    |> Enum.map(&ABI.FunctionSelector.parse_specification_item/1)
+    |> Enum.map(&FunctionSelector.parse_specification_item/1)
     |> Enum.filter(& &1)
   end
 end
