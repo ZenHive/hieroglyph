@@ -141,4 +141,4 @@ Types marked `[ ]` above are recognized by the ABI grammar but not implemented b
 
 # Collaboration
 
-This ABI library is licensed under the MIT license. Feel free to submit issues, pull requests or fork the code as you wish.
+MIT-licensed. Issues and PRs welcome at [ZenHive/hieroglyph](https://github.com/ZenHive/hieroglyph/issues). Upstream bugs affecting Solidity ABI semantics are also filed at [exthereum/abi](https://github.com/exthereum/abi/issues) — see `CHANGELOG.md` for cross-references.
