@@ -96,8 +96,11 @@ defmodule ABI do
       ...> |> Enum.find(&(&1.function == "bark")) # bark(address,bool)
       ...> |> ABI.decode("00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001" |> Base.decode16!(case: :lower))
       [<<1::160>>, true]
+
+      iex> ABI.decode("(uint256 a,bool b)", "000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000001" |> Base.decode16!(case: :lower), decode_structs: true)
+      %{a: 10, b: true}
   """
-  @spec decode(binary() | ABI.FunctionSelector.t(), binary(), keyword()) :: [any()]
+  @spec decode(binary() | ABI.FunctionSelector.t(), binary(), keyword()) :: [any()] | map()
   def decode(function_signature, data, opts \\ [])
 
   def decode(function_signature, data, opts) when is_binary(function_signature) do
@@ -175,7 +178,7 @@ defmodule ABI do
       }}
   """
   @spec decode_event(binary() | ABI.FunctionSelector.t(), binary(), [binary()], keyword()) ::
-          {:ok, String.t(), map()} | {:error, term()}
+          {:ok, String.t() | nil, map()} | {:error, term()}
   def decode_event(function_signature, data, topics, opts \\ [])
 
   def decode_event(function_signature, data, topics, opts) when is_binary(function_signature) do
