@@ -1,3 +1,6 @@
+# [Unreleased]
+* Added regression tests for the map-input encoder path (`ABI.TypeEncoder.data_to_list/2`): atom-keyed maps, string-keyed maps, camelCase→snake_case name resolution, string-over-atom key priority, integer values inside nested named-struct maps, and the missing-field / unnamed-type error raises. The map branch previously had zero test coverage; the string-key path was added in commit `46accc8`, and this suite also exercises integer encoding (`a43e9d5`) through the map branch.
+
 # 1.0.0-bravo1
 * Fix ABI tuple encoding for nested inlined tuples
 # 1.0.0-alpha9

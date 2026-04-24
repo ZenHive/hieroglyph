@@ -29,8 +29,8 @@ Upstream PRs for correctness bugs + test gaps in recently-added features. No arc
 
 ### Tests for recently-added features
 
-- [ ] Map-input encoder tests [D:2/B:7/U:7 → Eff:3.5] 🎯
-      `type_encoder.ex:441-460` (`data_to_list/2` map branch) is entirely uncovered by the doctest suite. Covers string-key + atom-key map input paths added in commits `a43e9d5` and `46accc8`. Regression risk is live — these are the two most recent features.
+- [x] ✅ Map-input encoder tests [D:2/B:7/U:7 → Eff:3.5]
+      `type_encoder.ex` `data_to_list/2` map branch now has explicit coverage (7 test cases) plus a demonstrative doctest. Tests live in `test/abi/type_encoder_test.exs` — covers atom keys, string keys, camelCase→snake_case resolution, string-over-atom priority, integer values in nested named-struct maps, and the two raise paths. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 - [ ] Round-trip test suite [D:3/B:7/U:7 → Eff:2.33] 🎯
       No systematic `decode(encode(x)) == x` coverage. Add property-based (StreamData) round-trip tests for core types: uint/int/bool/address/bytes/string/bytesN, fixed + dynamic arrays, nested tuples. Catches encoder/decoder symmetry drift.
