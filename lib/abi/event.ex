@@ -115,8 +115,7 @@ defmodule ABI.Event do
         indexed_types_full
         |> Enum.zip(topics)
         |> Map.new(fn {type, topic} ->
-          [value] = TypeDecoder.decode_raw(topic, [type])
-          {type.name, value}
+          {type.name, decode_indexed(type, topic)}
         end)
 
       [non_indexed_data] =
@@ -143,6 +142,30 @@ defmodule ABI.Event do
        "Invalid topics length (got=#{Enum.count(topics)}, expected=#{Enum.count(indexed_types_full)}), consider toggling `check_event_signature`"}
     end
   end
+
+  defp decode_indexed(param, topic) do
+    if reference_type?(param.type) do
+      {:indexed_hash, topic}
+    else
+      [value] = TypeDecoder.decode_raw(topic, [param])
+      value
+    end
+  end
+
+  # Per the Solidity ABI spec, indexed parameters of reference types
+  # (all arrays — fixed-size or dynamic — plus `string`, `bytes`, and
+  # tuples/structs) are stored in topics as keccak256(value). The
+  # original is unrecoverable, so we surface the hash as a tagged tuple
+  # rather than decoding garbage bytes. This is broader than
+  # `FunctionSelector.dynamic?/1` — that predicate answers the ABI
+  # head/tail question and says `uint256[2]` is static, but the event
+  # encoding rule hashes it all the same.
+  defp reference_type?(:string), do: true
+  defp reference_type?(:bytes), do: true
+  defp reference_type?({:array, _}), do: true
+  defp reference_type?({:array, _, _}), do: true
+  defp reference_type?({:tuple, _}), do: true
+  defp reference_type?(_), do: false
 
   defp verify_event_signature(indexed_data, function_selector) do
     {event_signature, res} = Map.pop(indexed_data, "__abi__topic")

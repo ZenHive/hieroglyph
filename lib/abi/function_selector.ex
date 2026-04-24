@@ -10,6 +10,7 @@ defmodule ABI.FunctionSelector do
           {:uint, integer()}
           | :bool
           | :bytes
+          | {:bytes, pos_integer()}
           | :string
           | :address
           | {:int, integer()}

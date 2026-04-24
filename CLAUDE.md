@@ -35,14 +35,9 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 
 See [ROADMAP.md](ROADMAP.md) for the current punch list (bugs, test debt, feature gaps).
 
-## Parked: Potential Rename to `hieroglyph`
+## Package Identity
 
-Mirrors the `signet → cartouche` Egyptian-naming pattern (a cartouche literally contains hieroglyphs). Not urgent, not decided — parked here so a future session doesn't re-litigate the naming search.
-
-- **Hex:** `hieroglyph` is free on hex.pm (checked 2026-04-24).
-- **GitHub:** `github.com/hieroglyph` exists as a user/org, but zero Elixir repos match — publish under our own org (`github.com/<owner>/hieroglyph`), not as a new top-level org, and there's no collision.
-- **Scope if we go:** rename repo + hex package only. **Keep `ABI` as the top-level module name** — it's the actual Solidity term and renaming hurts callsite discoverability. Consumers still call `ABI.encode/2`.
-- **Also-free alternatives considered:** `rosetta_stone` (most semantically precise but two-word ergonomic tax), `stele`, `papyrus`. `rosetta` itself is taken (Gleam stdlib port).
+Published on hex.pm as [`hieroglyph`](https://hex.pm/packages/hieroglyph) (fork-of `exthereum/abi`); repo lives at `github.com/ZenHive/hieroglyph`. The module namespace is unchanged — consumers still call `ABI.encode/2`, `ABI.decode/2`, etc. Only the hex dep name differs (`{:hieroglyph, "~> 1.0"}`). Name chosen to mirror the `signet → cartouche` Egyptian-naming pattern (a cartouche literally contains hieroglyphs); the `ABI` module name was kept deliberately because Solidity's own term is the correct one — renaming it would hurt callsite discoverability. See CHANGELOG entry for 1.0.0 (2026-04-24) for the version-reset rationale.
 
 ## Upstream Issue Monitoring
 
@@ -50,8 +45,8 @@ Mirrors the `signet → cartouche` Egyptian-naming pattern (a cartouche literall
 
 Open issues/PRs filed on `exthereum/abi` that affect this fork's direction — check status at session start for awareness (not to block on):
 
-- [exthereum/abi#53](https://github.com/exthereum/abi/issues/53) — indexed dynamic event params decoded wrong (bug). Filed 2026-04-24. Suggested fix: `is_dynamic?` + raw-topic-bytes.
-- [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) — `fixed`/`ufixed`/`function` parse-but-don't-encode + `@type type` gaps. Filed 2026-04-24. Low-risk path: parse-time rejection + typespec fix.
+- [exthereum/abi#53](https://github.com/exthereum/abi/issues/53) — indexed reference-type event params decoded wrong (bug). Filed 2026-04-24. Fork fix shipped on `zenhive`: `{:indexed_hash, <<32 bytes>>}` for all reference types (all arrays — fixed-size or dynamic — plus tuples, `string`, `bytes`) via a local `reference_type?/1`-gated branch in `ABI.Event`. Broader than the ABI head/tail "dynamic" rule by design — matches the spec's "all complex types" event-indexing rule. Awaiting upstream response.
+- [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) — `fixed`/`ufixed`/`function` parse-but-don't-encode + `@type type` gaps. Filed 2026-04-24. Fork fix shipped on `zenhive` (parse-time rejection in `ABI.Parser` + `{:bytes, N}` added to `@type type`); awaiting upstream response. A related `fixed<M>x<N>` lexer sub-bug (single `x` shadowed by LETTERS rule) was discovered during test-writing and is tracked as a separate ROADMAP task — not yet filed upstream.
 - PR #52 (Elixir 1.19 compat + typespec widening) — currently open.
 
 Check with `gh issue view 53 --repo exthereum/abi` / `gh issue view 54 --repo exthereum/abi` / `gh pr view 52 --repo exthereum/abi`.

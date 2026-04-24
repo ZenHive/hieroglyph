@@ -3,21 +3,39 @@ defmodule ABI.Mixfile do
 
   def project do
     [
-      app: :abi,
-      version: "1.3.0",
+      app: :hieroglyph,
+      version: "1.0.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
-      description: "Ethereum's ABI Interface",
-      package: [
-        maintainers: ["Geoffrey Hayes", "Mason Fischer"],
-        licenses: ["MIT"],
-        links: %{"GitHub" => "https://github.com/exthereum/abi"}
+      description:
+        "Solidity ABI encoder/decoder for Elixir. Maintained fork of exthereum/abi with bugfixes and Elixir 1.19+ support.",
+      source_url: "https://github.com/ZenHive/hieroglyph",
+      homepage_url: "https://github.com/ZenHive/hieroglyph",
+      docs: [
+        main: "ABI",
+        extras: ["README.md", "CHANGELOG.md"],
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
       ],
+      package: package(),
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       compilers: [:yecc, :leex] ++ Mix.compilers(),
       aliases: aliases(),
       deps: deps()
+    ]
+  end
+
+  defp package do
+    [
+      name: "hieroglyph",
+      maintainers: ["ZenHive"],
+      licenses: ["MIT"],
+      files: ~w(lib src mix.exs README.md CHANGELOG.md LICENSE.md .formatter.exs),
+      links: %{
+        "GitHub" => "https://github.com/ZenHive/hieroglyph",
+        "Changelog" => "https://github.com/ZenHive/hieroglyph/blob/main/CHANGELOG.md",
+        "Upstream (fork-of)" => "https://github.com/exthereum/abi"
+      }
     ]
   end
 

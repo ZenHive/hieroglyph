@@ -1,22 +1,27 @@
-# ABI [![CircleCI](https://circleci.com/gh/exthereum/abi.svg?style=svg)](https://circleci.com/gh/exthereum/abi)
+# Hieroglyph — Ethereum ABI for Elixir
+
+[![Hex.pm](https://img.shields.io/hexpm/v/hieroglyph.svg)](https://hex.pm/packages/hieroglyph)
+[![HexDocs](https://img.shields.io/badge/docs-hexdocs-blue.svg)](https://hexdocs.pm/hieroglyph)
 
 The [Application Binary Interface](https://docs.soliditylang.org/en/latest/abi-spec.html) (ABI) of Solidity describes how to transform binary data to types which the Solidity programming language understands. For instance, if we want to call a function `bark(uint32,bool)` on a Solidity-created contract `contract Dog`, what `data` parameter do we pass into our Ethereum transaction? This project allows us to encode such function calls.
 
+## About this package
+
+`hieroglyph` is a maintained fork of [exthereum/abi](https://github.com/exthereum/abi) that ships bugfixes and Elixir 1.19+ compatibility ahead of upstream. **The module namespace is unchanged:** consumers still call `ABI.encode/2`, `ABI.decode/2`, `ABI.parse_specification/1`, etc. Only the hex package name differs. See [exthereum/abi#53](https://github.com/exthereum/abi/issues/53) and [#54](https://github.com/exthereum/abi/issues/54) for the fork-motivating bug reports filed upstream.
+
 ## Installation
 
-The package can be installed by adding `abi` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `hieroglyph` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:abi, "~> 1.3.0"}
+    {:hieroglyph, "~> 1.0"}
   ]
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/abi](https://hexdocs.pm/abi).
+Docs are published on [HexDocs](https://hexdocs.pm/hieroglyph).
 
 ## Usage
 
@@ -124,6 +129,8 @@ Currently supports:
   * [X] `string`
   * [X] `<type>[]`
   * [X] `(T1,T2,...,Tn)`
+
+Types marked `[ ]` above are recognized by the ABI grammar but not implemented by this library. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains them (including nested in arrays or tuples), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking. The explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms currently raise a `FunctionClauseError` earlier due to a separate lexer bug — tracked in ROADMAP.
 
 # Docs
 
