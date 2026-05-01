@@ -117,6 +117,40 @@ defmodule ABI.TypeEncoderTest do
         TypeEncoder.encode([%{"my_field" => 9}], selector)
       end
     end
+
+    # The encoder uses `String.to_existing_atom/1` for the atom-key fallback
+    # branch — atoms are never created. These two tests exercise both
+    # outcomes when the snake_case form of a camelCase ABI name is NOT
+    # interned anywhere in the VM atom table.
+
+    test "string-key match succeeds even when the snake_case atom does not exist" do
+      selector = %FunctionSelector{
+        function: nil,
+        types: [%{type: {:tuple, [%{name: "encoderOnlyFieldZ47Q", type: {:uint, 32}}]}}]
+      }
+
+      # Verbatim camelCase string key → first cond branch matches; the
+      # snake_case atom is never consulted, so its existence is irrelevant.
+      assert TypeEncoder.encode([%{"encoderOnlyFieldZ47Q" => 7}], selector) ==
+               TypeEncoder.encode([{7}], selector)
+    end
+
+    test "missing-key raise reports the snake_case form even when the atom does not exist" do
+      selector = %FunctionSelector{
+        function: nil,
+        types: [
+          %{type: {:tuple, [%{name: "anotherEncoderOnlyFieldZ47Q", type: :bool}]}}
+        ]
+      }
+
+      err =
+        assert_raise RuntimeError, fn ->
+          TypeEncoder.encode([%{"unrelatedKey" => true}], selector)
+        end
+
+      assert err.message =~ ":another_encoder_only_field_z47_q"
+      assert err.message =~ "\"anotherEncoderOnlyFieldZ47Q\""
+    end
   end
 
   describe "type-error paths" do

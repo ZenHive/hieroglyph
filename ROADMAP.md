@@ -12,6 +12,8 @@
 
 ## 🎯 Current Focus
 
+**1.4.0 shipped 2026-05-01** — atom-creation hardening on the `decode_structs: true` path. Both call sites (`ABI.TypeDecoder.tuple_value/3`, `ABI.TypeEncoder.fetch_by_name/2`) routed through `String.to_existing_atom/1`; `sobelow_skip` annotations removed. Decoder requires pre-interned field atoms with a clear migration message; encoder change is a silent safety upgrade (no observable behavior change). README grew a "Pre-interning atoms for `decode_structs: true`" subsection. The DoS surface (atom-table exhaustion via attacker-controlled ABI field names) is now closed. See [CHANGELOG.md](CHANGELOG.md#140---2026-05-01).
+
 **1.3.0 shipped 2026-05-01** — solo-feature release: lifted the parse-time rejection on the Solidity `function` ABI type (24-byte external function pointer = 20-byte address ++ 4-byte selector). `ABI.encode("foo(function)", [<<24-byte payload>>])` now succeeds; `ABI.decode("foo(function)", payload)` returns the 24-byte binary; `function[]`, `function[N]`, and `(uint256, function)` work via the existing recursion; `ABI.encode_packed/2` accepts `function` (24 bytes tight per spec). `fixed`/`ufixed` stay deferred — Solidity itself does not fully support fixed-point types ([language docs](https://docs.soliditylang.org/en/latest/types.html): *"Fixed point numbers are not fully supported by Solidity yet"*) — so there's nothing real-world to encode against; README "Support" section explains the deferral inline. See [CHANGELOG.md](CHANGELOG.md#130---2026-05-01).
 
 **1.2.0 shipped 2026-05-01** — bundled release combining two batches of work. **Agent Economy:** top-level `ABI` plus the five remaining public modules annotated with `api()` declarations, `Descripex.Discoverable` wired across the full surface, dedicated `mix hieroglyph.manifest [path]` task, and a hint-rot validation test (`test/abi/agent_economy_test.exs`) whose load-bearing cross-check asserts every non-framework export is declared with `api()`. **Public Surface Pass:** new public APIs `ABI.decode_error/2` (Solidity 0.8.4+ custom errors) and `ABI.encode_packed/2` (Solidity non-standard packed encoding for Merkle airdrop leaves and `keccak256(abi.encodePacked(...))` schemes); `decode_event/4` error contract narrowed from `{:error, term()}` to a closed atom-tagged set (`{:event_signature_mismatch, _}`, `{:topics_length_mismatch, _}`, `{:malformed_data, _}`); `encode_bytes/1` flipped from `def` to `defp`. Folded in the previously-Unreleased Property Suite Expansion + DeFi Real-World Fixtures bundles. Manifest emits 28 user-declared entries (was 25; +3 for `decode_error/2` on `ABI`, `encode_packed/2` on `ABI`, and `encode_packed/2` on `ABI.TypeEncoder`). See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
@@ -20,9 +22,9 @@
 
 Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) also shipped in 1.2.0.
 
-**Next direction:** atom-creation hardening on the `decode_structs: true` path is the leader of the remaining standalone work. `fixed<M>x<N>` / `ufixed<M>x<N>` stay deferred (Solidity language limitation — see CHANGELOG 1.3.0 and README "Support"). Public-surface feature parity with `eth-abi` / `ethers` / `viem` / `alloy` is now substantially closed.
+**Next direction:** no live standalone open work in the table. `fixed<M>x<N>` / `ufixed<M>x<N>` stay deferred (Solidity language limitation — see CHANGELOG 1.3.0 and README "Support"). Public-surface feature parity with `eth-abi` / `ethers` / `viem` / `alloy` is now closed. Maintenance posture from here: respond to upstream maintainer feedback on #53/#54/#55 + the queued combined-bug filings (lexer `x` sub-bug, `:string` NUL truncation, `decode_structs: true` DoS hardening from 1.4.0), and watch for new gaps surfaced by downstream consumer activity (cartouche / onchain) or new EIPs.
 
-**Shipping units:** all release-bundles closed. Remaining open tasks ship standalone.
+**Shipping units:** all release-bundles closed. No remaining open tasks.
 
 ---
 
@@ -126,9 +128,8 @@ hieroglyph ← cartouche ← onchain ← {onchain_aave, onchain_evm, onchain_js,
 
 ### Hardening
 
-- [ ] Bound atom creation in `decode_structs: true` path [D:3/B:4/U:3 → Eff:1.17] 📋
-      `ABI.TypeDecoder.tuple_value/3` and `ABI.TypeEncoder.data_to_list/2` call `String.to_atom` on contract-supplied field names. Already `sobelow_skip ["DOS.StringToAtom"]`-annotated because the path is gated behind opt-in `decode_structs: true` and field names normally come from trusted ABI metadata. "Trusted" breaks if a consumer ingests ABIs from arbitrary sources (block explorers, contract registries, user-submitted JSON) — the atom table is a non-reclaimable VM resource. Pick one: (a) switch to `String.to_existing_atom/1` with a documented "caller must pre-intern field atoms" contract, (b) add a per-selector atom budget, or (c) cap total unique fields per process. Benchmark either way — the call sites are hot on large ABIs. Upstream PR worth discussing first (behavior change on an opt-in path).
-      **Docs:** CHANGELOG entry (security hardening); update `decode_structs: true` docstring with whichever contract lands.
+- [x] ✅ Bound atom creation in `decode_structs: true` path [D:3/B:4/U:3 → Eff:1.17] — shipped 1.4.0
+      Both call sites (`ABI.TypeDecoder.tuple_value/3` and `ABI.TypeEncoder.fetch_by_name/2`) now route through `String.to_existing_atom/1` — `sobelow_skip ["DOS.StringToAtom"]` annotations removed. Decoder requires snake_case field atoms to already exist in the VM atom table; new private helper `atom_key_for!/1` re-raises `ArgumentError` with a migration hint naming both the underscored atom and the original ABI field name. Encoder change is silent safety upgrade (the atom is only used for `Map` lookup; consumer maps can only contain pre-existing atoms anyway). Picked option (a) from the planted scoring; rejected (b) per-selector atom budget and (c) per-process cap as API-surface bloat that preserves the footgun. No benchee dep added — same hash-table lookup as `String.to_atom` on the hit path; benchmarking deferred until a workload regression surfaces. Version bumped 1.3.0 → 1.4.0 (behavior change on an opt-in path; not breaking the wire format or default decoder). Upstream filing pending — describes the DoS surface and proposes either the same `to_existing_atom` switch or a `decode_structs: :existing_atoms` opt-in for back-compat. See [CHANGELOG.md](CHANGELOG.md#140---2026-05-01).
 
 ### Discovery / Research
 
@@ -267,7 +268,7 @@ The Bundle column maps each open item to its `📦 Bundles` membership (or `—`
 | `function` implementation | ✅ Feature — shipped 1.3.0; standalone upstream PR (independent of #53/#54/#55 follow-ups) | 1.3.0 — `function` type (shipped) |
 | `fixed`/`ufixed` implementations | ⚠️ Feature — deferred (Solidity itself does not fully support fixed-point types — no real-world contracts emit them); reconsider if upstream Solidity work or a downstream consumer surfaces a concrete need | — |
 | `address payable` vs `address` doc note | ✅ Docs — one-line PR | — |
-| `decode_structs: true` atom bound | ⚠️ Hardening — discuss approach first (behavior change on opt-in path) | — |
+| `decode_structs: true` atom bound | ⚠️ Hardening — shipped 1.4.0; upstream issue pending. Discuss approach first (behavior change on opt-in path); maintainers may prefer a `decode_structs: :existing_atoms` opt-in over the same `to_existing_atom` switch. | — |
 | Phase 1: Descripex on `ABI` top-level | ❌ Fork-only — adds a runtime `:descripex` dep upstream maintainers haven't opted into; pitch only if they signal interest in the agent-economy pattern | 1.2.0 — Agent Economy |
 | Phase 2: Descripex on remaining public modules | ❌ Fork-only — same `:descripex` dep concern as Phase 1 | 1.2.0 — Agent Economy |
 | Phase 3: `mix hieroglyph.manifest` + hint-rot validation test | ❌ Fork-only — task name is `hieroglyph.manifest`; if Phase 1+2 ever upstream, the task would land as `abi.manifest` instead | 1.2.0 — Agent Economy |

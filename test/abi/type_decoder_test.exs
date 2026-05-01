@@ -59,4 +59,72 @@ defmodule ABI.TypeDecoderTest do
       assert [^ptrs] = TypeDecoder.decode_raw(encoded, types)
     end
   end
+
+  describe "decode_structs: true atom safety" do
+    # The decoder only materializes atoms that already exist in the VM atom
+    # table. Tests in this block use field-name strings whose snake_case form
+    # is intentionally non-existent ("neverInterned…") or referenced as a
+    # literal atom in the assertion ("preInterned…"); literal atoms are
+    # interned at module-load time regardless of source line order.
+
+    test "raises ArgumentError naming both the atom and the ABI field" do
+      types = [%{type: {:uint, 256}, name: "neverInternedFieldXyzZ47Q"}]
+      tuple_type = [%{type: {:tuple, types}}]
+      encoded = TypeEncoder.encode_raw([{42}], tuple_type)
+
+      err =
+        assert_raise ArgumentError, fn ->
+          TypeDecoder.decode_raw(encoded, tuple_type, decode_structs: true)
+        end
+
+      assert err.message =~ "decode_structs: true requires the snake_case"
+      assert err.message =~ ":never_interned_field_xyz_z47_q"
+      assert err.message =~ "\"neverInternedFieldXyzZ47Q\""
+    end
+
+    test "decodes successfully when the snake_case field atom has been interned" do
+      types = [
+        %{type: {:uint, 256}, name: "preInternedFieldA"},
+        %{type: :bool, name: "preInternedFieldB"}
+      ]
+
+      tuple_type = [%{type: {:tuple, types}}]
+      encoded = TypeEncoder.encode_raw([{42, true}], tuple_type)
+      opts = [decode_structs: true]
+
+      [decoded] = TypeDecoder.decode_raw(encoded, tuple_type, opts)
+
+      # The literal atoms `:pre_interned_field_a` / `:pre_interned_field_b`
+      # in this assertion intern them at compile time, satisfying the
+      # decoder's `String.to_existing_atom/1` lookup.
+      assert decoded == %{pre_interned_field_a: 42, pre_interned_field_b: true}
+    end
+
+    test "falls through to a tuple when decode_structs is false (no atom lookup)" do
+      types = [
+        %{type: {:uint, 256}, name: "yetAnotherNeverInternedFieldZ47Q"},
+        %{type: :bool, name: "stillNeverInternedFieldZ47Q"}
+      ]
+
+      tuple_type = [%{type: {:tuple, types}}]
+      encoded = TypeEncoder.encode_raw([{42, true}], tuple_type)
+
+      # Default behavior: returns a tuple, never touches the atom table.
+      assert [{42, true}] = TypeDecoder.decode_raw(encoded, tuple_type)
+    end
+
+    test "falls through to a tuple when any field name is empty (no atom lookup)" do
+      types = [
+        %{type: {:uint, 256}, name: "namedFieldXyzZ47Q"},
+        # Empty :name forces the tuple fallback even with decode_structs: true.
+        %{type: :bool, name: ""}
+      ]
+
+      tuple_type = [%{type: {:tuple, types}}]
+      encoded = TypeEncoder.encode_raw([{42, true}], tuple_type)
+      opts = [decode_structs: true]
+
+      assert [{42, true}] = TypeDecoder.decode_raw(encoded, tuple_type, opts)
+    end
+  end
 end

@@ -182,12 +182,14 @@ defmodule ABI do
       ],
       opts: [
         kind: :value,
-        description: "Keyword options. decode_structs: true returns a map keyed by parameter names instead of a list."
+        description:
+          "Keyword options. decode_structs: true returns a map keyed by snake_case atoms derived from parameter names instead of a list. Field-name atoms must already exist in the VM atom table — reference them in your code (e.g., a module attribute or compile-time list) before calling, otherwise decode raises ArgumentError. This bounds atom creation to your declared field set."
       ]
     ],
     returns: %{
-      type: :list,
-      description: "Decoded values, in argument order. Returns a map when decode_structs: true is set."
+      type: :union,
+      description:
+        "List of decoded values in argument order; or a map keyed by snake_case field atoms when decode_structs: true is set and every parameter has a non-empty name."
     }
   )
 
@@ -196,6 +198,15 @@ defmodule ABI do
   signature.
 
   In place of a signature, you can also pass one of the `ABI.FunctionSelector` structs returned from `parse_specification/1`.
+
+  ## Options
+
+    * `:decode_structs` — when `true`, returns a map keyed by snake_case atoms
+      derived from each parameter's name (instead of the default list).
+      Field-name atoms must already exist in the VM atom table — `decode/3`
+      calls `String.to_existing_atom/1` and raises `ArgumentError` when an
+      atom has not been interned. See the README "Pre-interning atoms for
+      `decode_structs: true`" section for the one-liner migration.
 
   ## Examples
 

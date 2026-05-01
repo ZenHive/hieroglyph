@@ -390,16 +390,20 @@ defmodule ABI.TypeDecoder do
   @doc """
   Combines a list of ABI argument types with a list of decoded element values
   into either a tuple or (when `decode_structs` is true and every type carries
-  a non-empty `:name`) a map keyed by `String.to_atom(Macro.underscore(name))`.
+  a non-empty `:name`) a map keyed by the existing snake_case atom for each
+  field name.
+
+  Field-name atoms must already exist in the VM atom table — `decode_structs:
+  true` calls `String.to_existing_atom/1` on `Macro.underscore(name)` and
+  raises `ArgumentError` if the atom has not been interned. This bounds atom
+  creation to the set of field names the caller has explicitly referenced in
+  their code, closing a DoS surface for consumers that ingest ABIs from
+  arbitrary sources.
 
   Used internally by `decode_type({:tuple, types}, ...)` to render the
   second-pass result; exposed because event-log decoding in `ABI.Event`
   reuses the same shape.
   """
-  # Field name comes from the ABI specification (trusted contract metadata),
-  # not arbitrary runtime input; this branch is gated behind the opt-in
-  # `decode_structs: true`.
-  # sobelow_skip ["DOS.StringToAtom"]
   @spec tuple_value(
           [FunctionSelector.argument_type()],
           [any()],
@@ -411,10 +415,28 @@ defmodule ABI.TypeDecoder do
       types
       |> Enum.zip(elements)
       |> Map.new(fn {type, element} ->
-        {String.to_atom(Macro.underscore(type[:name])), element}
+        {atom_key_for!(type[:name]), element}
       end)
     else
       List.to_tuple(elements)
+    end
+  end
+
+  @spec atom_key_for!(String.t()) :: atom()
+  defp atom_key_for!(name) do
+    underscored = Macro.underscore(name)
+
+    try do
+      String.to_existing_atom(underscored)
+    rescue
+      ArgumentError ->
+        reraise ArgumentError,
+                "decode_structs: true requires the snake_case field atom :#{underscored} " <>
+                  "(from ABI field \"#{name}\") to already exist in the VM atom table. " <>
+                  "Reference the atom in your code (e.g., in a module attribute, a `@type`, " <>
+                  "or a compile-time list) before the first decode call. See README " <>
+                  "\"Pre-interning atoms for decode_structs: true\" for guidance.",
+                __STACKTRACE__
     end
   end
 

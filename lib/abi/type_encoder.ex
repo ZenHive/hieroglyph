@@ -684,24 +684,42 @@ defmodule ABI.TypeEncoder do
     end
   end
 
-  # Field name comes from the ABI specification (trusted contract metadata),
-  # not arbitrary runtime input. Atom creation is bounded by the set of
-  # field names declared across all ABIs the consumer loads.
-  # sobelow_skip ["DOS.StringToAtom"]
   defp fetch_by_name(type, data) do
     name = type[:name]
-    atom_name = String.to_atom(Macro.underscore(name))
+    underscored = Macro.underscore(name)
+    atom_lookup = existing_atom(underscored)
 
     cond do
       Map.has_key?(data, name) ->
         Map.fetch!(data, name)
 
-      Map.has_key?(data, atom_name) ->
+      atom_in_map?(atom_lookup, data) ->
+        {:ok, atom_name} = atom_lookup
         Map.fetch!(data, atom_name)
 
       true ->
-        raise "Cannot find key `:#{atom_name}` or `\"#{name}\"` for type `#{inspect(type)}`\n\n\tin data:\n\n\t#{inspect(data)}"
+        raise "Cannot find key `:#{underscored}` or `\"#{name}\"` for type `#{inspect(type)}`\n\n\tin data:\n\n\t#{inspect(data)}"
     end
+  end
+
+  defp atom_in_map?({:ok, atom}, data), do: Map.has_key?(data, atom)
+  defp atom_in_map?(:error, _data), do: false
+
+  # Returns `{:ok, atom}` when the snake_case atom for `string` already
+  # exists in the VM atom table, or `:error` otherwise. We never *create*
+  # atoms here — `fetch_by_name/2` only uses the atom for a map lookup, and
+  # a consumer's input map can only contain atom keys that already exist in
+  # the VM. The tagged-tuple shape (rather than `atom() | nil`) keeps the
+  # "no existing atom" case distinct from a successful lookup that happens
+  # to return `nil` — `Macro.underscore("Nil") == "nil"` and
+  # `String.to_existing_atom("nil") == nil`, so a field whose snake_case
+  # form is `"nil"` would otherwise be indistinguishable from the
+  # not-interned case.
+  @spec existing_atom(String.t()) :: {:ok, atom()} | :error
+  defp existing_atom(string) do
+    {:ok, String.to_existing_atom(string)}
+  rescue
+    ArgumentError -> :error
   end
 
   @spec maybe_encode_unsigned(binary() | integer()) :: binary()

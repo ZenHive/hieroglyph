@@ -55,6 +55,28 @@ iex> ABI.decode("baz(uint,address)", "000000000000000000000000000000000000000000
 [50, <<1::160>> |> :binary.decode_unsigned]
 ```
 
+#### Pre-interning atoms for `decode_structs: true`
+
+When the ABI carries field names, you can opt into a map-shaped result keyed by snake_case atoms:
+
+```elixir
+iex> ABI.decode("(uint256 a,bool b)", "000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000001" |> Base.decode16!(case: :lower), decode_structs: true)
+%{a: 10, b: true}
+```
+
+Each field-name atom must already exist in the VM atom table — `decode_structs: true` calls `String.to_existing_atom/1` and raises `ArgumentError` if the atom has not been interned. This bounds atom creation to the set of names you have explicitly referenced in your code, closing the [`String.to_atom/1` DoS surface](https://hexdocs.pm/elixir/String.html#to_atom/1) for consumers that ingest ABIs from arbitrary sources (block explorers, user-submitted JSON, indexer feeds).
+
+The migration is a one-liner per consumer — reference the snake_case atoms once at compile time. Code that already pattern-matches the decoded map (`%{a: a, b: b} = decoded`) interns them automatically. For ABIs loaded dynamically:
+
+```elixir
+defmodule MyApp.Erc20 do
+  @field_atoms [:from, :to, :value, :owner, :spender]
+  # …
+end
+```
+
+Fields with empty `:name` (or any missing names) fall through to the tuple form — atom lookup is skipped entirely.
+
 ### Computing method IDs and decoding selector-prefixed calldata
 
 `ABI.method_id/1` returns the 4-byte function selector (`keccak256(canonical_signature)[0..3]`) — useful for selector-table routing, log-topic matching, or pre-validating calldata without decoding args. Accepts a signature string or a `FunctionSelector` struct.
