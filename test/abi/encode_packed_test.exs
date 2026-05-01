@@ -83,6 +83,26 @@ defmodule ABI.EncodePackedTest do
       assert ABI.encode_packed("foo(address)", [1]) == <<0::152, 1>>
     end
 
+    test "function: 24 bytes tight (20-byte address ++ 4-byte selector, no padding)" do
+      addr = :binary.copy(<<0xAB>>, 20)
+      sel = <<0xCA, 0xFE, 0xBA, 0xBE>>
+      ptr = addr <> sel
+      assert ABI.encode_packed("foo(function)", [ptr]) == ptr
+      assert byte_size(ABI.encode_packed("foo(function)", [ptr])) == 24
+    end
+
+    test "function size mismatch raises" do
+      assert_raise ArgumentError, ~r/function/, fn ->
+        ABI.encode_packed("foo(function)", [<<0::8*23>>])
+      end
+    end
+
+    test "function: non-binary value raises with type-specific error" do
+      assert_raise ArgumentError, ~r/expected 24-byte binary/, fn ->
+        ABI.encode_packed("foo(function)", [42])
+      end
+    end
+
     test "bool: 1 byte" do
       assert ABI.encode_packed("foo(bool)", [true]) == <<1>>
       assert ABI.encode_packed("foo(bool)", [false]) == <<0>>

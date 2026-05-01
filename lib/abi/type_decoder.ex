@@ -280,6 +280,8 @@ defmodule ABI.TypeDecoder do
 
   defp decode_type(:address, data, _opts), do: decode_bytes(data, 20, :left)
 
+  defp decode_type(:function, data, _opts), do: decode_bytes(data, 24, :right)
+
   defp decode_type(:bool, data, _opts) do
     {encoded_value, rest} = decode_uint(data, 8)
 

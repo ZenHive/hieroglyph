@@ -16,16 +16,15 @@ defmodule ABI.FunctionSelectorTest do
   end
 
   describe "parse-time rejection of unsupported grammar types (upstream #54)" do
-    # `function`, `fixed` / `ufixed` (bare and explicit-M/N forms) are
-    # accepted by the ABI grammar but not implemented by this library.
-    # Rejecting at parse time surfaces the error on the user's input
-    # instead of deep inside the encoder/decoder catch-all.
-
-    test "decode_type/1 raises on bare `function`" do
-      assert_raise ArgumentError, ~r/function/, fn ->
-        FunctionSelector.decode_type("function")
-      end
-    end
+    # `fixed` / `ufixed` (bare and explicit-M/N forms) are accepted by the
+    # ABI grammar but not implemented by this library — Solidity itself
+    # does not fully support fixed-point types (see
+    # https://docs.soliditylang.org/en/latest/types.html). Rejecting at
+    # parse time surfaces the error on the user's input instead of deep
+    # inside the encoder/decoder catch-all.
+    #
+    # `function` was previously rejected here too; lifted in 1.3.0 — see the
+    # "`function` type acceptance" describe block below.
 
     test "decode_type/1 raises on bare `fixed` (parser expands to fixed128x18)" do
       assert_raise ArgumentError, ~r/fixed/, fn ->
@@ -80,33 +79,9 @@ defmodule ABI.FunctionSelectorTest do
       end
     end
 
-    test "decode_type/1 raises on array of rejected type" do
-      assert_raise ArgumentError, ~r/function/, fn ->
-        FunctionSelector.decode_type("function[]")
-      end
-    end
-
     test "decode_type/1 raises on fixed-size array of rejected type" do
       assert_raise ArgumentError, ~r/fixed/, fn ->
         FunctionSelector.decode_type("fixed[5]")
-      end
-    end
-
-    test "decode_type/1 raises on tuple containing rejected type" do
-      assert_raise ArgumentError, ~r/function/, fn ->
-        FunctionSelector.decode_type("(uint256,function)")
-      end
-    end
-
-    test "decode/1 raises on selector argument with rejected type" do
-      assert_raise ArgumentError, ~r/function/, fn ->
-        FunctionSelector.decode("foo(function)")
-      end
-    end
-
-    test "decode/1 raises on selector return with rejected type" do
-      assert_raise ArgumentError, ~r/function/, fn ->
-        FunctionSelector.decode("foo(uint256)->function")
       end
     end
 
@@ -114,6 +89,42 @@ defmodule ABI.FunctionSelectorTest do
       assert {:array, {:uint, 256}} = FunctionSelector.decode_type("uint256[]")
       assert {:bytes, 32} = FunctionSelector.decode_type("bytes32")
       assert :address = FunctionSelector.decode_type("address")
+    end
+  end
+
+  describe "`function` type acceptance (upstream #54 partial — lifted in 1.3.0)" do
+    # The `function` ABI type is a 24-byte external function pointer:
+    # 20-byte address ++ 4-byte selector, right-padded to 32 bytes on the
+    # wire (same layout as `bytes24`). Previously rejected at parse time
+    # alongside `fixed`/`ufixed`; lifted in 1.3.0 because — unlike
+    # fixed-point types — Solidity itself fully supports `function`.
+
+    test "decode_type/1 accepts bare `function`" do
+      assert :function = FunctionSelector.decode_type("function")
+    end
+
+    test "decode_type/1 accepts `function[]` (dynamic array)" do
+      assert {:array, :function} = FunctionSelector.decode_type("function[]")
+    end
+
+    test "decode_type/1 accepts tuple containing `function`" do
+      assert {:tuple, [%{type: {:uint, 256}}, %{type: :function}]} =
+               FunctionSelector.decode_type("(uint256,function)")
+    end
+
+    test "decode/1 accepts selector argument with `function` type" do
+      assert %FunctionSelector{
+               function: "foo",
+               types: [%{type: :function}]
+             } = FunctionSelector.decode("foo(function)")
+    end
+
+    test "decode/1 accepts selector return with `function` type" do
+      assert %FunctionSelector{
+               function: "foo",
+               types: [%{type: {:uint, 256}}],
+               returns: :function
+             } = FunctionSelector.decode("foo(uint256)->function")
     end
   end
 
@@ -182,16 +193,18 @@ defmodule ABI.FunctionSelectorTest do
       assert FunctionSelector.encode(selector) == "foo((address,uint256))"
     end
 
-    test "renders dead-via-parse types when constructed manually" do
-      # `:function`, `{:fixed, _, _}`, `{:ufixed, _, _}` are rejected at
-      # parse time per upstream #54, but the `get_type/1` clauses remain
-      # for callers that build selectors directly. `nil` is the same
-      # shape: defensive against partially-built typeinfo maps.
+    test "renders `function` type" do
       assert FunctionSelector.encode(%FunctionSelector{
                function: "f",
                types: [%{type: :function}]
              }) == "f(function)"
+    end
 
+    test "renders dead-via-parse types when constructed manually" do
+      # `{:fixed, _, _}` and `{:ufixed, _, _}` are rejected at parse time
+      # per upstream #54, but the `get_type/1` clauses remain for callers
+      # that build selectors directly. `nil` is the same shape: defensive
+      # against partially-built typeinfo maps.
       assert FunctionSelector.encode(%FunctionSelector{
                function: "f",
                types: [%{type: {:fixed, 128, 18}}]

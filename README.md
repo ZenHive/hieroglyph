@@ -221,7 +221,7 @@ Currently supports:
   * [ ] `ufixed<M>x<N>`
   * [ ] `fixed`
   * [X] `bytes<M>`
-  * [ ] `function`
+  * [X] `function`
   * [X] `<type>[M]`
   * [X] `bytes`
   * [X] `string`
@@ -230,7 +230,11 @@ Currently supports:
 
 Round-trip safety — `decode(encode(x)) == x` — is property-tested with `stream_data` across every supported type above, including recursively nested tuples and fixed/dynamic arrays.
 
-Types marked `[ ]` above are recognized by the ABI grammar but not implemented by this library. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains them (including nested in arrays or tuples, and the explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking.
+`function` is the 24-byte external function pointer (20-byte address ++ 4-byte selector); supplied to `ABI.encode/2` as a 24-byte binary, returned by `ABI.decode/3` in the same shape. Encoded as a 32-byte right-padded slot in standard mode, or 24 bytes tight in `ABI.encode_packed/2`.
+
+### Why `fixed<M>x<N>` / `ufixed<M>x<N>` are deferred
+
+Solidity itself does not fully support fixed-point types — quoting the [Solidity language docs](https://docs.soliditylang.org/en/latest/types.html): *"Fixed point numbers are not fully supported by Solidity yet. They can be declared, but cannot be assigned to or from."* Because no real contracts emit them, there is nothing to encode/decode in the wild; the cost of implementing a full encoder/decoder + range validation against a type the language itself can't use would be all build, no payoff. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains `fixed`/`ufixed` (bare or explicit-`M`x`N`, including nested in arrays or tuples), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking.
 
 # Docs
 

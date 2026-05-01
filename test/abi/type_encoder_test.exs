@@ -178,4 +178,43 @@ defmodule ABI.TypeEncoderTest do
       end
     end
   end
+
+  describe "function type encoding" do
+    # `function` is a 24-byte external function pointer: 20-byte address ++
+    # 4-byte selector. On the wire it's right-padded to 32 bytes (same
+    # layout as `bytes24`).
+
+    @addr :binary.copy(<<0xAB>>, 20)
+    @sel <<0xCA, 0xFE, 0xBA, 0xBE>>
+    @ptr @addr <> @sel
+
+    test "encode/2 produces a 32-byte right-padded slot" do
+      selector = %FunctionSelector{function: nil, types: [%{type: :function}]}
+      encoded = TypeEncoder.encode([@ptr], selector)
+
+      # 24-byte payload, then 8 zero bytes of right padding.
+      assert encoded == @ptr <> <<0::8*8>>
+      assert byte_size(encoded) == 32
+    end
+
+    test "encode/2 raises ArgumentError on a binary of the wrong size" do
+      selector = %FunctionSelector{function: nil, types: [%{type: :function}]}
+
+      assert_raise ArgumentError, ~r/expected 24 bytes/, fn ->
+        TypeEncoder.encode([<<0::8*23>>], selector)
+      end
+
+      assert_raise ArgumentError, ~r/expected 24 bytes/, fn ->
+        TypeEncoder.encode([<<0::8*25>>], selector)
+      end
+    end
+
+    test "encode/2 raises ArgumentError on a non-binary value" do
+      selector = %FunctionSelector{function: nil, types: [%{type: :function}]}
+
+      assert_raise ArgumentError, ~r/expected 24-byte binary/, fn ->
+        TypeEncoder.encode([42], selector)
+      end
+    end
+  end
 end

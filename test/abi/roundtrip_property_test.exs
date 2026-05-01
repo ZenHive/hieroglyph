@@ -33,6 +33,7 @@ defmodule ABI.RoundtripPropertyTest do
   defp bytes_n_value(n), do: StreamData.binary(length: n)
   defp bytes_value, do: StreamData.binary(max_length: 64)
   defp string_value, do: StreamData.string(:utf8, max_length: 64)
+  defp function_value, do: StreamData.binary(length: 24)
 
   # ── Dispatcher: return a generator for any valid type ───────────────────
 
@@ -43,6 +44,7 @@ defmodule ABI.RoundtripPropertyTest do
   defp value_for({:bytes, n}), do: bytes_n_value(n)
   defp value_for(:bytes), do: bytes_value()
   defp value_for(:string), do: string_value()
+  defp value_for(:function), do: function_value()
 
   defp value_for({:array, inner, count}) do
     StreamData.list_of(value_for(inner), length: count)
@@ -69,6 +71,7 @@ defmodule ABI.RoundtripPropertyTest do
   @leaf_types [
     :bool,
     :address,
+    :function,
     :string,
     :bytes,
     {:uint, 8},
@@ -152,6 +155,12 @@ defmodule ABI.RoundtripPropertyTest do
     property "address round-trips (20-byte binary)" do
       check all(value <- address_value()) do
         assert roundtrip(:address, value) == value
+      end
+    end
+
+    property "function round-trips (24-byte binary: 20-byte address ++ 4-byte selector)" do
+      check all(value <- function_value()) do
+        assert roundtrip(:function, value) == value
       end
     end
 

@@ -34,14 +34,13 @@ defmodule ABI.Parser do
     end
   end
 
-  # The grammar accepts `function`, `fixed<M>x<N>`, `ufixed<M>x<N>` for
-  # ABI-spec compatibility, but this library does not implement encode/decode
-  # for them. Reject at parse time with a link to the tracking issue so the
-  # error lands on the user's input instead of deep inside the type-encoder
-  # catch-all.
+  # The grammar accepts `fixed<M>x<N>` and `ufixed<M>x<N>` for ABI-spec
+  # compatibility, but this library does not implement encode/decode for them
+  # (Solidity itself does not fully support fixed-point types — see
+  # https://docs.soliditylang.org/en/latest/types.html). Reject at parse time
+  # with a link to the tracking issue so the error lands on the user's input
+  # instead of deep inside the type-encoder catch-all.
   # See https://github.com/exthereum/abi/issues/54.
-  defp reject_unsupported!(:function), do: raise_unsupported!("function")
-
   defp reject_unsupported!({:fixed, m, n}), do: raise_unsupported!("fixed#{m}x#{n}")
 
   defp reject_unsupported!({:ufixed, m, n}), do: raise_unsupported!("ufixed#{m}x#{n}")

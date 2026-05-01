@@ -25,6 +25,7 @@ defmodule ABI.FunctionSelector do
           | {:bytes, pos_integer()}
           | :string
           | :address
+          | :function
           | {:int, integer()}
           | {:array, type}
           | {:array, type, non_neg_integer}
@@ -583,6 +584,7 @@ defmodule ABI.FunctionSelector do
   def dynamic?({:uint, _}), do: false
   def dynamic?(:bool), do: false
   def dynamic?(:address), do: false
+  def dynamic?(:function), do: false
 
   @doc false
   @spec get_function_type(String.t()) :: function_type()

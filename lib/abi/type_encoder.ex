@@ -372,6 +372,19 @@ defmodule ABI.TypeEncoder do
 
   defp encode_type(:address, data), do: encode_type({:uint, 160}, data)
 
+  defp encode_type(:function, [data | rest]) when is_binary(data) and byte_size(data) == 24 do
+    {encode_bytes(data), rest}
+  end
+
+  defp encode_type(:function, [data | _]) when is_binary(data) do
+    raise ArgumentError,
+          "function: size mismatch (expected 24 bytes — 20-byte address ++ 4-byte selector — got #{byte_size(data)})"
+  end
+
+  defp encode_type(:function, [data | _]) do
+    raise ArgumentError, "function: expected 24-byte binary, got #{inspect(data)}"
+  end
+
   defp encode_type(:bool, [data | rest]) do
     value =
       case data do
@@ -472,6 +485,17 @@ defmodule ABI.TypeEncoder do
 
   defp packed_top(:address, value) when is_binary(value) and byte_size(value) == 20, do: value
   defp packed_top(:address, value) when is_integer(value), do: pack_uint(value, 160)
+
+  defp packed_top(:function, value) when is_binary(value) and byte_size(value) == 24, do: value
+
+  defp packed_top(:function, value) when is_binary(value) do
+    raise ArgumentError,
+          "encode_packed function: size mismatch (expected 24 bytes, got #{byte_size(value)})"
+  end
+
+  defp packed_top(:function, value) do
+    raise ArgumentError, "encode_packed function: expected 24-byte binary, got #{inspect(value)}"
+  end
 
   defp packed_top(:bool, true), do: <<1>>
   defp packed_top(:bool, false), do: <<0>>
