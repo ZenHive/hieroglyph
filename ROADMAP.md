@@ -20,9 +20,11 @@ Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer respo
 
 **DeFi Real-World Fixtures bundle shipped 2026-05-01 (Unreleased)** — both members landed: real-world calldata round-trips (`test/abi/defi_calldata_test.exs`) and selector golden vectors (`test/abi/function_selector_real_world_test.exs`). Tests-only PR, no production code touched. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-**Next direction:** the remaining Property Suite Expansion bundle (`tuple[]` round-trip, empty-collection fixtures, multiple top-level struct args, deeper nesting) plus the standalone open tasks in subsequent sections.
+**Property Suite Expansion bundle shipped 2026-05-01 (Unreleased)** — all four planned members plus a fifth: a production fix for an 8-year-old `nul_terminate_string/1` bug in `ABI.TypeDecoder` that the new mixed-element `tuple[]` property surfaced on its first run. Solidity strings are length-prefixed UTF-8 and may contain NUL codepoints; the upstream helper was C-string thinking and silently empty-decoded any string with a leading null byte. See [CHANGELOG.md](CHANGELOG.md#unreleased) — should be filed upstream as a fourth bug alongside #53/#54/#55.
 
-**Shipping units:** see `📦 Bundles` below for the remaining release-bundle. The other open tasks ship standalone.
+**Next direction:** standalone open tasks — `ABI.decode_error/2` (highest unblocked Eff at 1.63), `decode_structs: true` atom-creation hardening, and (lower priority) `ABI.encode_packed/2`. Both bundles are now closed.
+
+**Shipping units:** all release-bundles closed. Remaining open tasks ship standalone.
 
 ---
 
@@ -33,12 +35,8 @@ Tasks grouped by shipping unit. A bundle ships as one PR / one release; member t
 ### Bundle: DeFi Real-World Fixtures ✅ shipped 2026-05-01 (Unreleased)
 Both members landed in a single tests-only commit. Inline `@fixtures` format chosen over the originally-proposed `test/fixtures/defi_calldata.exs` because no `.exs` data-loading idiom exists in the repo. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-### Bundle: Property Suite Expansion
-**Members:** `tuple[]` round-trip coverage, Empty `bytes` / empty `tuple[]` inside struct fields, Multiple top-level struct args, Deep struct nesting (depth ≥ 4)
-**Avg Eff:** 1.52 — (1.25 + 1.5 + 1.33 + 2.0) / 4
-**Ships:** single PR expanding `test/abi/roundtrip_property_test.exs`
-**Why bundle:** every member edits the same property test file and the same generator helpers (`composite/2`, `value_for/1`, the arg-list builder). They're sequential, not parallel — bumping `composite` depth interacts with the new `{:array, {:tuple, _}, :dynamic}` clause; the empty-`tuple[]` fixtures depend on the `tuple[]` generator landing first. Integrating in one PR avoids merge friction inside the generator and runs the (slow) property suite once instead of four times in CI.
-**Sequencing:** `tuple[]` round-trip → empty `tuple[]` fixtures → multiple top-level struct args → deep nesting bump. Depth bump lands last so it stresses the most generator surface.
+### Bundle: Property Suite Expansion ✅ shipped 2026-05-01 (Unreleased)
+All four planned members landed. Sequencing held: `tuple[]` (member 1a) → empty fixtures (1b) → multi-arg (1c) → depth bump (1d). The mixed-element `tuple[]` property in 1a surfaced an 8-year-old upstream bug in `ABI.TypeDecoder.nul_terminate_string/1` (Solidity strings are length-prefixed UTF-8, not C strings) — fixed in production code as a fifth bundle member, with regression tests for leading/embedded/all-NUL strings. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 ---
 
@@ -53,6 +51,7 @@ Both members landed in a single tests-only commit. Inline `@fixtures` format cho
 | **`decode_event/4` mixed raise + tagged-tuple contract** | ⬜ (hold) | `lib/abi/event.ex:93-148` | Returns `{:error, _}` for topic/length mismatches but calls `decode_raw` internally, which raises on malformed data. Scope of change = arguable 2.0 breaking API — discuss before PR, not yet filed upstream. **Docs:** CHANGELOG entry (breaking); possibly README note on the unified return contract. |
 | **`dynamic?/1` crashes on zero-length fixed array** | ✅ shipped 1.1.0 (no upstream issue yet) | `lib/abi/function_selector.ex:484` | One-line fix shipped: `def dynamic?({:array, _type, 0}), do: false`. Encoder/decoder paths already handle zero-length arrays correctly — verified by extending `roundtrip_property_test.exs`'s fixed-array length domain to `0..3`. Pre-existing in upstream `exthereum/abi`; not yet filed (consider folding with the lexer-rule-ordering fix into a single PR). See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01). |
 | **`encode_int/2` byte-vs-bit overflow guard rejected ALL `int<N>`** | ✅ shipped 1.1.0 [upstream #55](https://github.com/exthereum/abi/issues/55) | `lib/abi/type_encoder.ex:382-401` | Surfaced by the round-trip property suite on first run. The overflow guard compared `byte_size(significant_bytes)` against `desired_size_bytes - 1`, which is `0` for `int8` — so even encoding `0` raised. Replaced with a numeric range check against `2^(N-1)` performed up-front, so the encoder accepts the full signed range `-2^(N-1)..2^(N-1)-1` for every `int<N>`. The pre-existing `"int overflow raises data overflow"` test passed only because the encoder was broken for any value; tightened to assert specific in-range values encode AND specific boundary cases (`128`, `-129`) raise. Filed upstream 2026-05-01 — awaiting maintainer response. See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01). |
+| **`:string` decode silently truncated at first NUL byte** | ✅ shipped 2026-05-01 (Unreleased) — upstream filing pending (batch with #53/#54/#55 follow-up) | `lib/abi/type_decoder.ex:295-298` | Surfaced by the new mixed-element `tuple[]` property in the Property Suite Expansion bundle. The `:string` decode clause called a `nul_terminate_string/1` helper that split the decoded binary at the first `<<0>>` byte and returned only the prefix — treating Solidity strings as C strings. Solidity strings are length-prefixed UTF-8 and may legally contain NUL codepoints (`U+0000`); `decode_bytes/3 → Math.unpad/3` already returns exactly the right length, so the post-strip was both wrong and unnecessary. Fix: removed the helper entirely; `:string` decode now delegates straight to `decode_bytes(rest, length, :right)`. Pre-existing in upstream `exthereum/abi` since 2018 (commit `bdceb719`); undetected because random `StreamData.string(:utf8, ...)` rarely starts with NUL and most real Solidity strings (function names, error messages) don't either. Production paths affected: `ABI.decode/3`, `ABI.decode_call/3`, `ABI.decode_event/4`, `ABI.TypeDecoder.decode/3`. Three regression unit tests added (leading-NUL, embedded-NUL, all-NULs strings). See [CHANGELOG.md](CHANGELOG.md#unreleased). |
 
 ---
 
@@ -202,42 +201,17 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
 - [x] ✅ Empty-args calldata path coverage [D:1/B:2/U:3 → Eff:2.5]
       Tests added in `test/abi_test.exs` covering the `f()` shape (`weth.deposit()` / `rocket_pool.deposit()`): `ABI.encode("deposit()", []) == <<0xD0, 0xE3, 0x0D, 0xB0>>`, `ABI.decode("deposit()", <<>>) == []`, plus the `function: nil`/`types: []` empty-bytes shape. See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01).
 
-- [ ] Deep struct nesting (depth ≥ 4) round-trip [D:2/B:4/U:4 → Eff:2.0] 🚀
-      `roundtrip_property_test.exs` `composite/2` recursion is capped at depth 3 (line ~252 of the file). Pendle `swapExactTokenForPt` exercises depth 5: `args.input` (struct) contains `swapData` (struct) which contains `extCalldata` (bytes); the `limit` arg (struct) contains `normalFills` and `flashFills` (each `tuple[]`). Bumping `composite` depth to 5 is a one-line change; the failures (if any) it surfaces are real.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — Deep struct nesting (depth ≥ 4) round-trip [D:2/B:4/U:4 → Eff:2.0]
+      Bumped `composite` property's `type_and_value_gen(3)` cap to depth 5; raised the property's `@tag timeout` from 120s to 300s to absorb the larger generation surface; added `max_runs: 50` (down from default 100) so deep samples have higher information-density without ballooning CI time. Depth-5 trees passed cleanly — no production failures surfaced from this member alone (the string-NUL bug below was surfaced by member 1a's mixed-element `tuple[]` property, not by the depth bump). See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-      Motivated by: `pendle_swap_token_for_pt` (`0xc81f847a`), `pendle_swap_token_for_yt` (`0xed48907e`), `pendle_add_liquidity` (`0x12599ac6`).
-      **Bundle:** Property Suite Expansion
-      **Docs:** CHANGELOG entry under `## [Unreleased]`.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — Multiple top-level struct args [D:3/B:4/U:4 → Eff:1.33]
+      Added a `roundtrip_args/2` helper alongside the single-arg `roundtrip/2`. New property mirrors the Balancer V2 `swap(SingleSwap, FundManagement, uint256, uint256)` shape — two sibling structs of differing dynamic-rate (one mixed static+dynamic, one static-only) plus two scalar args at the ends. Exercises sibling-tuple offset arithmetic when adjacent top-level tuples are dynamic at different rates. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-- [ ] Multiple top-level struct args [D:3/B:4/U:4 → Eff:1.33] 📋
-      Roundtrip property test always wraps arguments as a single tuple or a single dynamic array. Real protocols often pass **multiple sibling structs** as separate top-level args (Balancer V2 `swap(SingleSwap, FundManagement, uint256, uint256)` is the canonical case — 4 top-level args of which 2 are structs). Add a generator that builds an arg list `[t1, t2, ...]` where 2+ entries are independently-generated structs. Catches head/tail offset arithmetic when sibling tuples are dynamic at different rates.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — `tuple[]` (dynamic array of tuples) round-trip coverage [D:4/B:5/U:5 → Eff:1.25]
+      The existing `value_for/1` dispatcher already composed `{:array, inner}` with `{:tuple, ...}`, so no new generator clause was needed (the roadmap planting note proposed a new `value_for({:array, {:tuple, [...]}, :dynamic})` clause but `:dynamic` is not how this codebase represents dynamic arrays — they're just `{:array, inner}` at depth-2). What was missing was explicit pin-down via three properties: a static-only-element `tuple[]`, a mixed-element `tuple[]` where each element is itself dynamic (the most stress-testing shape), and an empty `tuple[]` unit test. The mixed-element property surfaced the 8-year-old `nul_terminate_string/1` bug in `ABI.TypeDecoder` on its first run — see new entry in `🐛 Bugs` table. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-      Motivated by: `balancer_swap` (`0x52bbbe29`) — `swap((bytes32,uint8,address,address,uint256,bytes),(address,bool,address,bool),uint256,uint256)`.
-      **Bundle:** Property Suite Expansion
-      **Docs:** CHANGELOG entry under `## [Unreleased]`.
-
-- [ ] `tuple[]` (dynamic array of tuples) round-trip coverage [D:4/B:5/U:5 → Eff:1.25] 📋
-      `roundtrip_property_test.exs` exercises dynamic arrays only with `uint256`/`address`/`string`/`bytes` element types (lines ~189–211). It never generates a `(T1, T2, …)[]` shape — but `tuple[]` is the canonical shape for batch-style DeFi calls. Real-world examples found:
-      - EigenLayer `queueWithdrawals((address[],uint256[],address)[])` (`0x0dd8dd02`) — each element is itself dynamic (two array fields), so `head/tail` is computed per-element AND per-array.
-      - Pendle `limit.normalFills` and `limit.flashFills` (both `(...)[]` fields nested inside a struct, typically empty `[]` in practice — see the empty-array edge case task below).
-
-      Add a `value_for({:array, {:tuple, [...]}, :dynamic})` clause and a property that exercises `tuple_of(static_only)[]`, `tuple_of(mixed)[]`, and an empty `tuple[]`.
-      **Bundle:** Property Suite Expansion
-      **Docs:** CHANGELOG entry under `## [Unreleased]`.
-
-- [ ] Empty `bytes` and empty `tuple[]` inside struct fields [D:3/B:5/U:4 → Eff:1.5] 📋
-      Several protocols pass empty dynamic fields (`0x` for `bytes`, `[]` for `tuple[]`) inside a tuple where adjacent fields are also dynamic. Head/tail offsets must still be exact. The roundtrip property generates random-length `bytes` (0..64) but doesn't pin the empty-bytes-in-tuple case explicitly, and never tests empty `tuple[]` at all (see task above). Examples:
-      - `balancer_swap.singleSwap.userData = "0x"` (constant in the playbook)
-      - `eigenlayer_delegate.approverSignatureAndExpiry.signature = "0x"` (constant)
-      - `pendle_*.limit.normalFills = []` and `limit.optData = "0x"`
-
-      Add explicit fixtures (not properties) that exercise:
-      - struct with two adjacent dynamic fields, one empty
-      - struct with `(bytes,bytes)` where both are empty
-      - struct with `tuple[]` empty as the only dynamic field
-      - struct with `tuple[]` empty followed by a non-empty `bytes`
-      **Bundle:** Property Suite Expansion
-      **Docs:** CHANGELOG entry under `## [Unreleased]`.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — Empty `bytes` and empty `tuple[]` inside struct fields [D:3/B:5/U:4 → Eff:1.5]
+      Added explicit unit tests (not properties) for the four pinned shapes: `(bytes, string)` with empty bytes and non-empty string, `(bytes, bytes)` both empty, empty `tuple[]` as the only dynamic field in a struct, and empty `tuple[]` followed by non-empty bytes. Inline `test "..." do` blocks (not the `@fixtures` pattern from `defi_calldata_test.exs`) — round-trip equality is enough; locking against synthetic byte strings would be overkill given the property tests already exercise the layout invariants. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 **Out-of-scope findings (deliberately not proposed):**
 
@@ -300,9 +274,10 @@ The Bundle column maps each open item to its `📦 Bundles` membership (or `—`
 | Phase 3: `mix hieroglyph.manifest` + hint-rot validation test | ❌ Fork-only — task name is `hieroglyph.manifest`; if Phase 1+2 ever upstream, the task would land as `abi.manifest` instead | 1.2.0 — Agent Economy |
 | Real-world golden calldata fixtures from `defi-skills build` | ✅ Pure tests — shipped locally; combine with selector vectors into the upstream PR after #53/#54 responses land | DeFi Real-World Fixtures (shipped) |
 | Function selector golden vectors against `FunctionSelector.encode/1` | ✅ Pure tests — shipped locally; combine with calldata fixtures into one upstream PR matching the bundle | DeFi Real-World Fixtures (shipped) |
-| `tuple[]` (dynamic array of tuples) round-trip coverage | ✅ Pure tests — file the whole bundle as one "round-trip property suite expansion" upstream PR | Property Suite Expansion |
-| Empty `bytes` / empty `tuple[]` inside struct fields | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
-| Multiple top-level struct args | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
-| Deep struct nesting (depth ≥ 4) round-trip | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
+| `tuple[]` (dynamic array of tuples) round-trip coverage | ✅ Pure tests — file the whole bundle as one "round-trip property suite expansion" upstream PR | Property Suite Expansion (shipped) |
+| Empty `bytes` / empty `tuple[]` inside struct fields | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion (shipped) |
+| Multiple top-level struct args | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion (shipped) |
+| Deep struct nesting (depth ≥ 4) round-trip | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion (shipped) |
+| `:string` decode silently truncated at first NUL byte | ✅ Bug — file as a fourth upstream issue alongside #53/#54/#55 (or batch with the lexer `x` sub-bug); affects every `exthereum/abi` consumer that decodes user-supplied strings | Property Suite Expansion (shipped) — surfaced by member 1a's mixed-element `tuple[]` property |
 
 Stale upstream issues worth courtesy-triaging (not opening, just noting): #17, #25, #32 all look fixed on current `main`.

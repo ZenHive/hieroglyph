@@ -107,13 +107,19 @@ defmodule ABI.RoundtripPropertyTest do
     end)
   end
 
-  # ── Round-trip helper ───────────────────────────────────────────────────
+  # ── Round-trip helpers ──────────────────────────────────────────────────
 
   defp roundtrip(type, value) do
     args = [%{type: type}]
     encoded = TypeEncoder.encode_raw([value], args)
     [decoded] = TypeDecoder.decode_raw(encoded, args)
     decoded
+  end
+
+  defp roundtrip_args(types, values) do
+    args = Enum.map(types, &%{type: &1})
+    encoded = TypeEncoder.encode_raw(values, args)
+    TypeDecoder.decode_raw(encoded, args)
   end
 
   # ── Static value types ──────────────────────────────────────────────────
@@ -172,6 +178,24 @@ defmodule ABI.RoundtripPropertyTest do
       check all(value <- string_value()) do
         assert roundtrip(:string, value) == value
       end
+    end
+
+    # Regression: pre-existing exthereum/abi `nul_terminate_string/1` split
+    # decoded strings at the first NUL byte, treating Solidity strings as
+    # C strings. Solidity strings are length-prefixed UTF-8 — NUL bytes are
+    # legal codepoints. Random `StreamData.string(:utf8, ...)` rarely starts
+    # with NUL, so the property above missed it for years.
+
+    test "string with leading NUL byte round-trips" do
+      assert roundtrip(:string, <<0, 1, 2, 3, "rest">>) == <<0, 1, 2, 3, "rest">>
+    end
+
+    test "string with embedded NUL byte round-trips" do
+      assert roundtrip(:string, <<"pre", 0, "post">>) == <<"pre", 0, "post">>
+    end
+
+    test "string consisting entirely of NUL bytes round-trips" do
+      assert roundtrip(:string, <<0, 0, 0, 0>>) == <<0, 0, 0, 0>>
     end
   end
 
@@ -248,12 +272,155 @@ defmodule ABI.RoundtripPropertyTest do
     end
   end
 
+  # ── tuple[] (dynamic array of tuples) ───────────────────────────────────
+  #
+  # The defi-skills mining (2026-04-30) surfaced this shape via EigenLayer
+  # `queueWithdrawals((address[],uint256[],address)[])` — a dynamic array
+  # whose elements are tuples that themselves contain dynamic fields.
+  # Production support exists in `TypeEncoder` and `TypeDecoder` via the
+  # `{:array, T}` → `{:tuple, [T, T, ...]}` delegation; explicit coverage
+  # here pins the layout so a regression can't land silently.
+
+  describe "tuple[] (dynamic array of tuples)" do
+    property "tuple[] of static-only elements round-trips" do
+      element_type = {:tuple, [%{type: :address}, %{type: {:uint, 256}}]}
+
+      check all(
+              elements <-
+                StreamData.list_of(
+                  StreamData.tuple({address_value(), uint_value(256)}),
+                  max_length: 4
+                )
+            ) do
+        assert roundtrip({:array, element_type}, elements) == elements
+      end
+    end
+
+    property "tuple[] of mixed static+dynamic elements round-trips" do
+      element_type =
+        {:tuple,
+         [
+           %{type: :address},
+           %{type: :string},
+           %{type: {:array, {:uint, 256}}}
+         ]}
+
+      element_gen =
+        StreamData.tuple({
+          address_value(),
+          string_value(),
+          StreamData.list_of(uint_value(256), max_length: 3)
+        })
+
+      check all(elements <- StreamData.list_of(element_gen, max_length: 3)) do
+        assert roundtrip({:array, element_type}, elements) == elements
+      end
+    end
+
+    test "empty tuple[] round-trips" do
+      element_type = {:tuple, [%{type: :address}, %{type: {:uint, 256}}]}
+      assert roundtrip({:array, element_type}, []) == []
+    end
+  end
+
+  # ── Empty dynamic fields inside structs ─────────────────────────────────
+  #
+  # Pinned edge cases — Balancer V2 `singleSwap.userData = "0x"`,
+  # EigenLayer `approverSignatureAndExpiry.signature = "0x"`, and Pendle
+  # `limit.normalFills = []` all pass empty dynamic fields adjacent to
+  # other dynamic fields. Head/tail offset arithmetic must stay exact.
+
+  describe "empty dynamic fields inside structs" do
+    test "two adjacent dynamic fields, one empty bytes" do
+      type = {:tuple, [%{type: :bytes}, %{type: :string}]}
+      value = {<<>>, "non-empty"}
+      assert roundtrip(type, value) == value
+    end
+
+    test "(bytes, bytes) both empty" do
+      type = {:tuple, [%{type: :bytes}, %{type: :bytes}]}
+      value = {<<>>, <<>>}
+      assert roundtrip(type, value) == value
+    end
+
+    test "empty tuple[] as the only dynamic field in a struct" do
+      element_type = {:tuple, [%{type: :address}]}
+
+      type =
+        {:tuple, [%{type: :address}, %{type: {:array, element_type}}]}
+
+      value = {<<0::160>>, []}
+      assert roundtrip(type, value) == value
+    end
+
+    test "empty tuple[] followed by non-empty bytes" do
+      element_type = {:tuple, [%{type: {:uint, 256}}]}
+
+      type =
+        {:tuple, [%{type: {:array, element_type}}, %{type: :bytes}]}
+
+      value = {[], <<1, 2, 3>>}
+      assert roundtrip(type, value) == value
+    end
+  end
+
+  # ── Multiple top-level struct args ──────────────────────────────────────
+  #
+  # Mirrors the Balancer V2 `swap(SingleSwap, FundManagement, uint256, uint256)`
+  # shape — two sibling structs of differing dynamic-rate plus two scalar
+  # args. Catches sibling-tuple offset arithmetic when adjacent top-level
+  # tuples are dynamic at different rates.
+
+  describe "multiple top-level struct args" do
+    property "two sibling structs + two scalars round-trip" do
+      # First struct is mixed static+dynamic (dynamic rate: 1 string field).
+      # Second struct is static-only (static rate). Scalars pad both ends.
+      type_a =
+        {:tuple,
+         [
+           %{type: :address},
+           %{type: :string},
+           %{type: {:uint, 256}}
+         ]}
+
+      type_b =
+        {:tuple,
+         [
+           %{type: :bool},
+           %{type: :address},
+           %{type: {:uint, 128}}
+         ]}
+
+      check all(
+              addr_a <- address_value(),
+              str_a <- string_value(),
+              uint_a <- uint_value(256),
+              bool_b <- bool_value(),
+              addr_b <- address_value(),
+              uint_b <- uint_value(128),
+              scalar_pre <- uint_value(256),
+              scalar_post <- uint_value(64)
+            ) do
+        types = [{:uint, 256}, type_a, type_b, {:uint, 64}]
+
+        values = [
+          scalar_pre,
+          {addr_a, str_a, uint_a},
+          {bool_b, addr_b, uint_b},
+          scalar_post
+        ]
+
+        assert roundtrip_args(types, values) == values
+      end
+    end
+  end
+
   # ── Composite (recursive) ───────────────────────────────────────────────
 
   describe "composite" do
-    @tag timeout: 120_000
-    property "arbitrary valid types and values round-trip (depth ≤ 3)" do
-      check all({type, value} <- type_and_value_gen(3)) do
+    @tag timeout: 300_000
+    property "arbitrary valid types and values round-trip (depth ≤ 5)" do
+      check all({type, value} <- type_and_value_gen(5), max_runs: 50) do
         assert roundtrip(type, value) == value
       end
     end
