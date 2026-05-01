@@ -18,9 +18,11 @@
 
 Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) also shipped in 1.2.0.
 
-**Next direction (post-1.2.0):** the two remaining bundles below — DeFi Real-World Fixtures (golden calldata + selector vectors from `defi-skills` v0.3.0 mining) and Property Suite Expansion (`tuple[]` round-trip, empty-collection fixtures, multiple top-level struct args, deeper nesting). Plus the standalone open tasks in subsequent sections.
+**DeFi Real-World Fixtures bundle shipped 2026-05-01 (Unreleased)** — both members landed: real-world calldata round-trips (`test/abi/defi_calldata_test.exs`) and selector golden vectors (`test/abi/function_selector_real_world_test.exs`). Tests-only PR, no production code touched. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-**Shipping units:** see `📦 Bundles` below for the two remaining release-bundles. The other open tasks ship standalone.
+**Next direction:** the remaining Property Suite Expansion bundle (`tuple[]` round-trip, empty-collection fixtures, multiple top-level struct args, deeper nesting) plus the standalone open tasks in subsequent sections.
+
+**Shipping units:** see `📦 Bundles` below for the remaining release-bundle. The other open tasks ship standalone.
 
 ---
 
@@ -28,12 +30,8 @@ Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer respo
 
 Tasks grouped by shipping unit. A bundle ships as one PR / one release; member tasks share scope, files, or sourcing. Standalone tasks (no `**Bundle:**` annotation on the task itself) ship independently. Each member task keeps its own D/B/U score — the per-bundle "Avg Eff" below is a planning convenience, not a substitute.
 
-### Bundle: DeFi Real-World Fixtures
-**Members:** Real-world golden calldata fixtures from `defi-skills build`, Function selector golden vectors against `FunctionSelector.encode/1`
-**Avg Eff:** 2.25 — (2.0 + 2.5) / 2
-**Ships:** single tests-only PR, no production code touched
-**Why bundle:** both surface from the same `defi-skills` v0.3.0 mining pass (see "Proposed additions from defi-skills mining" intro). Selectors and calldata samples come from the same playbooks at the same paths; one PR shares the citation block, fixture-file location decision, README "Real-world fixtures" note, and CHANGELOG entry. Splitting doubles the bookkeeping for one quality goal.
-**Sequencing:** order-independent — selector vectors don't depend on the calldata fixture file's existence and vice versa.
+### Bundle: DeFi Real-World Fixtures ✅ shipped 2026-05-01 (Unreleased)
+Both members landed in a single tests-only commit. Inline `@fixtures` format chosen over the originally-proposed `test/fixtures/defi_calldata.exs` because no `.exs` data-loading idiom exists in the repo. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 ### Bundle: Property Suite Expansion
 **Members:** `tuple[]` round-trip coverage, Empty `bytes` / empty `tuple[]` inside struct fields, Multiple top-level struct args, Deep struct nesting (depth ≥ 4)
@@ -154,8 +152,8 @@ Surfaced 2026-04-30 by mining the [`defi-skills`](https://pypi.org/project/defi-
 
 Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete sample calldata included so the implementing session has copy-pasteable fixtures.
 
-- [ ] Real-world golden calldata fixtures from `defi-skills build` [D:3/B:6/U:6 → Eff:2.0] 🚀
-      Add a fixture file (e.g. `test/fixtures/defi_calldata.exs`) of locked `{signature, args, expected_calldata_hex}` triples captured from `defi-skills build --action <name> --json`. Each fixture asserts both directions: `ABI.encode(selector, args) == expected_calldata` AND `ABI.decode(expected_calldata, types) == args`. Validates against `eth_abi` (the canonical reference) without taking a runtime dep. Today only one real-world fixture exists in the repo — the ERC-20 `Transfer` event doctest in `lib/abi.ex`. Coverage gap: every encoder/decoder change is verified only against synthetic shapes.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — Real-world golden calldata fixtures from `defi-skills build` [D:3/B:6/U:6 → Eff:2.0]
+      Landed as `test/abi/defi_calldata_test.exs` — 10 round-trip golden vectors captured via `defi-skills build --action <name> --json` (defi-skills v0.3.0). Format chosen: inline `@fixtures` module attribute (the `test/fixtures/defi_calldata.exs` proposal was discarded — no `.exs` data-loading idiom exists in the repo and inline matches the existing convention). Each fixture asserts both directions: `ABI.encode(sig, args)` reproduces the locked calldata exactly, and `ABI.decode_call(sig, calldata)` round-trips back to the original args. Covers Aave V3 supply/borrow/setCollateral, Compound V3 supply/claim, Lido stake/unstake (exercising `uint256[]` head/tail layout), EigenLayer deposit, ERC-20 transfer, and WETH unwrap. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
       Recommended starter set (10 captures, all built without RPC/TheGraph):
       - `aave_supply` `supply(address,uint256,address,uint16)` selector `0x617ba037`
@@ -180,8 +178,8 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       **Bundle:** DeFi Real-World Fixtures
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
-- [ ] Function selector golden vectors against `FunctionSelector.encode/1` [D:2/B:5/U:5 → Eff:2.5] 🎯
-      Lock 10–15 known mainnet selectors against `ABI.FunctionSelector.encode/1` output. Cheapest entry to win — all selectors are already known from `defi-skills` playbooks. No fixture file needed; one focused test module `test/abi/function_selector_real_world_test.exs` mapping `signature_string → expected_4_bytes`. Today there's no test that proves the keccak-derived selector matches what real chains expect.
+- [x] ✅ shipped 2026-05-01 (Unreleased) — Function selector golden vectors against `FunctionSelector.encode/1` [D:2/B:5/U:5 → Eff:2.5]
+      Landed as `test/abi/function_selector_real_world_test.exs`. 12 explicit `ABI.method_id/1` golden-vector tests cover Aave V3, Compound V3, Lido (`uint256[]`), Curve 3pool (`uint256[3]`), Uniswap V3 (single tuple arg), Balancer V2 (multiple top-level tuples), EigenLayer (`tuple[]`), ERC-20 (`transfer`, plus `transferFrom` whose 4-byte selector is shared with ERC-721), and WETH. A second `describe` block round-trips the four tuple/`tuple[]`/fixed-array signatures through `FunctionSelector.decode/1 ∘ encode/1` and re-asserts the resulting selector — proving the canonical-signature serialization matches the spec. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
       Selectors with known signatures (subset across protocols, all from `defi-skills` playbooks):
       - `supply(address,uint256,address,uint16)` → `0x617ba037` (Aave)
@@ -300,8 +298,8 @@ The Bundle column maps each open item to its `📦 Bundles` membership (or `—`
 | Phase 1: Descripex on `ABI` top-level | ❌ Fork-only — adds a runtime `:descripex` dep upstream maintainers haven't opted into; pitch only if they signal interest in the agent-economy pattern | 1.2.0 — Agent Economy |
 | Phase 2: Descripex on remaining public modules | ❌ Fork-only — same `:descripex` dep concern as Phase 1 | 1.2.0 — Agent Economy |
 | Phase 3: `mix hieroglyph.manifest` + hint-rot validation test | ❌ Fork-only — task name is `hieroglyph.manifest`; if Phase 1+2 ever upstream, the task would land as `abi.manifest` instead | 1.2.0 — Agent Economy |
-| Real-world golden calldata fixtures from `defi-skills build` | ✅ Pure tests — file as part of a combined "real-world DeFi fixtures" PR after #53/#54 responses land | DeFi Real-World Fixtures |
-| Function selector golden vectors against `FunctionSelector.encode/1` | ✅ Pure tests — combine with calldata fixtures into one upstream PR matching the bundle | DeFi Real-World Fixtures |
+| Real-world golden calldata fixtures from `defi-skills build` | ✅ Pure tests — shipped locally; combine with selector vectors into the upstream PR after #53/#54 responses land | DeFi Real-World Fixtures (shipped) |
+| Function selector golden vectors against `FunctionSelector.encode/1` | ✅ Pure tests — shipped locally; combine with calldata fixtures into one upstream PR matching the bundle | DeFi Real-World Fixtures (shipped) |
 | `tuple[]` (dynamic array of tuples) round-trip coverage | ✅ Pure tests — file the whole bundle as one "round-trip property suite expansion" upstream PR | Property Suite Expansion |
 | Empty `bytes` / empty `tuple[]` inside struct fields | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
 | Multiple top-level struct args | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
