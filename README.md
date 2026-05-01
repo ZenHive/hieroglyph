@@ -83,6 +83,43 @@ iex> ABI.decode_call("transfer(address,uint256)", <<0xa9, 0x05>>)
 
 Returns `{:ok, decoded}` on selector match, or `{:error, :calldata_too_short | :selector_mismatch | :no_function_name}`. A malformed payload after a valid selector still raises — same contract as `decode/3`.
 
+### Decoding custom errors (Solidity 0.8.4+)
+
+Solidity 0.8.4 introduced [custom errors](https://soliditylang.org/blog/2021/04/21/custom-errors/) — the revert data is selector-prefixed exactly like calldata, with the selector being `keccak256("ErrorName(types...)")[0..3]`. `ABI.decode_error/2` matches the first 4 bytes of `revert_data` against a list of known error definitions and decodes the payload of whichever matches first. Definition order is the disambiguation lever — the first matching selector wins.
+
+```elixir
+iex> revert = ABI.encode("InsufficientBalance(uint256,uint256)", [10, 100])
+iex> ABI.decode_error(revert, [
+...>   "Unauthorized(address)",
+...>   "InsufficientBalance(uint256,uint256)",
+...>   "NotFound()"
+...> ])
+{:ok, %{error: "InsufficientBalance", args: [10, 100]}}
+```
+
+Returns `{:ok, %{error: name, args: [...]}}` on a hit, or `{:error, :no_match | :calldata_too_short}`. Like `decode_call/3`, a malformed payload after a successful selector match still raises. Each definition in the list can be a signature string or a pre-parsed `FunctionSelector` struct (mixed accepted).
+
+### Packed encoding (`abi.encodePacked`)
+
+`ABI.encode_packed/2` produces Solidity's [non-standard packed encoding](https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode) — used for Merkle airdrop leaves, `keccak256(abi.encodePacked(...))` signature schemes, and any context where you need the byte-tight concatenation rather than the standard 32-byte-aligned head/tail layout.
+
+```elixir
+# Canonical spec example: int16(-1), bytes1(0x42), uint16(0x03), string("Hello, world!")
+iex> ABI.encode_packed(
+...>   "spec(int16,bytes1,uint16,string)",
+...>   [-1, <<0x42>>, 3, "Hello, world!"]
+...> )
+<<0xff, 0xff, 0x42, 0x00, 0x03>> <> "Hello, world!"
+
+# Merkle airdrop leaf: address ++ uint256 → 52 bytes pre-hash
+iex> account = <<0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8::160>>
+iex> packed = ABI.encode_packed("leaf(address,uint256)", [account, 100])
+iex> byte_size(packed)
+52
+```
+
+Tuples/structs and nested arrays are not supported by Solidity's packed mode and raise `ArgumentError`. Inside an array, scalar elements are padded to 32 bytes (per the spec) so element boundaries are recoverable; at the top level the encoding is byte-tight with no padding. Standard ABI encoding (`ABI.encode/2`) is the inverse — use `encode/2` for transaction calldata, `encode_packed/2` for hashing inputs.
+
 ### Parsing a JSON ABI file
 
 Full contract ABIs from `solc` / Foundry / Hardhat can be fed straight into `ABI.parse_specification/1` after decoding the JSON. Non-function entries (constructors) are skipped; function, fallback, receive, event, and custom-error entries are all returned as `ABI.FunctionSelector` structs.
@@ -100,6 +137,8 @@ Each returned selector carries its `function_type` (`:function`, `:constructor`,
 ### Decoding event logs
 
 Event logs arrive as `{data, topics}` pairs from the JSON-RPC node. `ABI.decode_event/4` (or the lower-level `ABI.Event.decode_event/4`) splits indexed parameters out of the topics and decodes non-indexed parameters from the data blob. By default it verifies that `topics[0]` matches the keccak256 of the event signature; pass `check_event_signature: false` to skip that check when decoding anonymous events or when `topics` intentionally omits the signature slot.
+
+Errors come back as a closed atom-tagged set — `{:error, {:event_signature_mismatch, %{expected: _, got: _}}}` when `topics[0]` doesn't match the expected signature, `{:error, {:topics_length_mismatch, _}}` when the topic count is wrong for the indexed-parameter count, and `{:error, {:malformed_data, _}}` when the non-indexed payload fails to decode. Pattern-match the tag rather than parsing strings.
 
 ```elixir
 iex> hex = &Base.decode16!(&1, case: :lower)

@@ -132,38 +132,55 @@ defmodule ABI.EventTest do
       ]
     }
 
-    test "returns :error when topic[0] does not match the event signature" do
+    test "returns :event_signature_mismatch when topic[0] does not match" do
+      data = ~h[0x00000000000000000000000000000000000000000000000000000004a817c800]
+      bad = ~h[0x0000000000000000000000000000000000000000000000000000000000000001]
+
+      topics = [
+        bad,
+        ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
+        ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]
+      ]
+
+      expected = Event.event_signature(@transfer_selector)
+      result = Event.decode_event(data, topics, @transfer_selector)
+
+      assert {:error, {:event_signature_mismatch, payload}} = result
+      assert payload == %{expected: expected, got: bad}
+    end
+
+    test "returns :topics_length_mismatch when topic count disagrees with indexed count" do
       data = ~h[0x00000000000000000000000000000000000000000000000000000004a817c800]
 
       topics = [
-        ~h[0x0000000000000000000000000000000000000000000000000000000000000001],
         ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
         ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]
       ]
 
       case Event.decode_event(data, topics, @transfer_selector) do
-        {:error, msg} ->
-          assert msg =~ "Mismatched event signature"
+        {:error, {:topics_length_mismatch, %{got: 2, expected: 3}}} ->
+          :ok
 
         other ->
-          flunk("Expected {:error, _}, got #{inspect(other)}")
+          flunk("Expected {:error, {:topics_length_mismatch, _}}, got #{inspect(other)}")
       end
     end
 
-    test "returns :error when the topics count disagrees with the indexed-parameter count" do
-      data = ~h[0x00000000000000000000000000000000000000000000000000000004a817c800]
+    test "returns :malformed_data when non-indexed payload is too short to decode" do
+      truncated_data = ~h[0x000000000000000000000000000000000000000000000000000000000000]
 
       topics = [
+        Event.event_signature(@transfer_selector),
         ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
         ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]
       ]
 
-      case Event.decode_event(data, topics, @transfer_selector) do
-        {:error, msg} ->
-          assert msg =~ "Invalid topics length"
+      case Event.decode_event(truncated_data, topics, @transfer_selector) do
+        {:error, {:malformed_data, msg}} when is_binary(msg) ->
+          :ok
 
         other ->
-          flunk("Expected {:error, _}, got #{inspect(other)}")
+          flunk("Expected {:error, {:malformed_data, _}}, got #{inspect(other)}")
       end
     end
   end

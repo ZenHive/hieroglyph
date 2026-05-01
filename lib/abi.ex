@@ -348,6 +348,174 @@ defmodule ABI do
     end
   end
 
+  api(
+    :decode_error,
+    "Decodes selector-prefixed revert data against a list of known custom-error definitions.",
+    params: [
+      revert_data: [
+        kind: :value,
+        description:
+          "Selector-prefixed revert payload (4-byte error ID + ABI-encoded args), e.g. the data field returned by a Solidity 0.8.4+ custom-error revert."
+      ],
+      error_definitions: [
+        kind: :value,
+        description:
+          "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "Tagged tuple. {:ok, %{error: name, args: decoded}} when a definition matches; {:error, reason} otherwise. A malformed payload after a selector match still raises (same contract as decode/3)."
+    },
+    errors: [
+      calldata_too_short: "Fewer than 4 bytes provided.",
+      no_match: "No definition's 4-byte selector matched revert_data[0..3]."
+    ],
+    composes_with: [:decode, :method_id]
+  )
+
+  @doc """
+  Decodes selector-prefixed revert data against a list of known custom-error
+  definitions.
+
+  Solidity 0.8.4 introduced
+  [custom errors](https://soliditylang.org/blog/2021/04/21/custom-errors/);
+  when a contract reverts with `revert MyError(arg1, arg2)`, the revert data is
+  `keccak256("MyError(type1,type2)")[0..3] ++ abi.encode(arg1, arg2)` — exactly
+  the same shape as a call's selector-prefixed calldata.
+
+  This helper mirrors `decode_call/3` for that shape: try each candidate error
+  signature against the revert's 4-byte prefix, decode the payload using
+  whichever matches first.
+
+  Returns:
+
+  * `{:ok, %{error: name, args: decoded}}` — the first definition matching the
+    4-byte selector. `name` is the error's function name; `decoded` matches
+    `decode/3`'s shape (a list of args)
+  * `{:error, :calldata_too_short}` — fewer than 4 bytes provided
+  * `{:error, :no_match}` — no definition's selector matched
+
+  > #### Note {: .info}
+  >
+  > Only the *selector* match is wrapped in `{:error, _}`. When a selector
+  > matches but the payload is malformed, the underlying `decode/3` still
+  > raises — same contract as `decode_call/3`.
+
+  ## Examples
+
+      iex> revert_data = ABI.encode("InsufficientBalance(uint256,uint256)", [10, 100])
+      iex> ABI.decode_error(revert_data, ["InsufficientBalance(uint256,uint256)"])
+      {:ok, %{error: "InsufficientBalance", args: [10, 100]}}
+
+      iex> revert_data = ABI.encode("Unauthorized(address)", [<<1::160>>])
+      iex> ABI.decode_error(revert_data, [
+      ...>   "InsufficientBalance(uint256,uint256)",
+      ...>   "Unauthorized(address)"
+      ...> ])
+      {:ok, %{error: "Unauthorized", args: [<<1::160>>]}}
+
+      iex> ABI.decode_error(<<0xde, 0xad, 0xbe, 0xef>>, ["NotFound()"])
+      {:error, :no_match}
+
+      iex> ABI.decode_error(<<0xa9, 0x05>>, ["NotFound()"])
+      {:error, :calldata_too_short}
+  """
+  @typep decode_error_error :: :calldata_too_short | :no_match
+
+  @spec decode_error(binary(), [binary() | FunctionSelector.t()]) ::
+          {:ok, %{error: String.t() | nil, args: [any()] | map()}}
+          | {:error, decode_error_error()}
+  def decode_error(revert_data, error_definitions)
+
+  def decode_error(revert_data, _error_definitions) when byte_size(revert_data) < 4 do
+    {:error, :calldata_too_short}
+  end
+
+  def decode_error(revert_data, error_definitions) when is_list(error_definitions) do
+    <<actual::binary-size(4), payload::binary>> = revert_data
+
+    selectors = Enum.map(error_definitions, &normalize_error_definition/1)
+
+    case Enum.find(selectors, fn sel -> method_id(sel) == actual end) do
+      nil ->
+        {:error, :no_match}
+
+      %FunctionSelector{} = sel ->
+        {:ok, %{error: sel.function, args: decode(sel, payload)}}
+    end
+  end
+
+  defp normalize_error_definition(sig) when is_binary(sig), do: Parser.parse!(sig)
+  defp normalize_error_definition(%FunctionSelector{} = sel), do: sel
+
+  api(
+    :encode_packed,
+    "Encodes values using Solidity's non-standard packed mode (abi.encodePacked).",
+    params: [
+      signature_or_selector: [
+        kind: :value,
+        description:
+          ~s{Signature string with a function name (e.g. "leaf(address,uint256)") or a pre-parsed FunctionSelector. The name is ignored in packed mode but is required by the parser to flatten the type list. Paren-only signatures like "(address,uint256)" parse as a single struct argument and raise per the spec.}
+      ],
+      values: [
+        kind: :value,
+        description:
+          "List of values in argument order. Tuple/struct types and nested arrays raise ArgumentError — Solidity's spec does not define their packed encoding."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description:
+        "Tightly-packed bytes per the Solidity spec — types <32 bytes concatenated without padding, dynamic types in-place without length prefix, array elements padded to 32 bytes. Never selector-prefixed; not decodable (the spec is ambiguous in the presence of multiple dynamic args)."
+    },
+    composes_with: [:method_id]
+  )
+
+  @doc """
+  Encodes a list of values using Solidity's
+  [non-standard packed mode](https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode).
+
+  Used primarily for `keccak256(abi.encodePacked(...))` Merkle leaves and
+  signature schemes; never used for actual function calls (the spec defines
+  no decoding function — encoding is ambiguous with multiple dynamic args).
+
+  Tuple/struct values and nested arrays raise `ArgumentError` — the spec
+  does not define their packed encoding.
+
+  > #### Warning {: .warning}
+  >
+  > If both `a` and `b` are dynamic types, `abi.encodePacked(a, b)` is
+  > ambiguous: `abi.encodePacked("a", "bc") == abi.encodePacked("ab", "c")`.
+  > Do not feed multiple dynamic args into packed-mode signature schemes
+  > without controlling for that collision.
+
+  ## Examples
+
+      iex> ABI.encode_packed("foo(int16,bytes1,uint16,string)", [-1, <<0x42>>, 3, "Hello, world!"])
+      ...> |> Base.encode16(case: :lower)
+      "ffff42000348656c6c6f2c20776f726c6421"
+
+      iex> ABI.encode_packed("leaf(address,uint256)", [<<1::160>>, 100])
+      ...> |> Base.encode16(case: :lower)
+      "00000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064"
+
+      iex> ABI.encode_packed("foo(uint8[])", [[1, 2, 3]])
+      ...> |> Base.encode16(case: :lower)
+      "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003"
+  """
+  @spec encode_packed(binary() | FunctionSelector.t(), [any()]) :: binary()
+  def encode_packed(signature_or_selector, values)
+
+  def encode_packed(signature, values) when is_binary(signature) do
+    encode_packed(Parser.parse!(signature), values)
+  end
+
+  def encode_packed(%FunctionSelector{types: types}, values) do
+    TypeEncoder.encode_packed(values, types)
+  end
+
   api(:decode_event, "Decodes an event from raw log data and indexed topics.",
     params: [
       function_signature: [
@@ -372,13 +540,32 @@ defmodule ABI do
     returns: %{
       type: :tuple,
       description:
-        "Tagged tuple. {:ok, event_name, args_map} on success; {:error, reason} on signature or topic-length mismatch. Indexed reference-type params decode as {:indexed_hash, <<32 bytes>>} per the Solidity spec."
+        "Tagged tuple. {:ok, event_name, args_map} on success; {:error, reason} on signature mismatch, topic-count mismatch, or malformed non-indexed payload. Indexed reference-type params decode as {:indexed_hash, <<32 bytes>>} per the Solidity spec."
     },
+    errors: [
+      event_signature_mismatch:
+        "topics[0] did not match keccak256(canonical_signature). Payload: %{expected: <<32 bytes>>, got: <<32 bytes>>}.",
+      topics_length_mismatch:
+        "Number of topics did not match the indexed-parameter count (plus the implicit topics[0] slot when check_event_signature: true). Payload: %{got: integer, expected: integer}.",
+      malformed_data:
+        "Non-indexed payload failed to decode (truncated, wrong types, or otherwise inconsistent with function_selector.types). Payload: human-readable message string."
+    ],
     composes_with: [:event_signature]
   )
 
   @doc """
   Decodes an event, including indexed and non-indexed data.
+
+  Returns:
+
+  * `{:ok, event_name, args_map}` on success
+  * `{:error, {:event_signature_mismatch, %{expected: _, got: _}}}` — `topics[0]` did
+    not match `keccak256(canonical_signature)`
+  * `{:error, {:topics_length_mismatch, %{got: _, expected: _}}}` — topic count did not
+    match the indexed-parameter count (plus the implicit `topics[0]` slot when
+    `check_event_signature: true`)
+  * `{:error, {:malformed_data, message}}` — non-indexed payload failed to decode
+    (truncated, wrong types, or otherwise inconsistent with `function_selector.types`)
 
   ## Examples
 
@@ -442,7 +629,7 @@ defmodule ABI do
           binary(),
           [binary()],
           keyword()
-        ) :: {:ok, String.t() | nil, map()} | {:error, term()}
+        ) :: {:ok, String.t() | nil, map()} | {:error, Event.decode_error()}
   def decode_event(function_signature, data, topics, opts \\ [])
 
   def decode_event(function_signature, data, topics, opts) when is_binary(function_signature) do

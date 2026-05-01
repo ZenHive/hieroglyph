@@ -42,13 +42,40 @@ defmodule ABI.Event do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, function_name, %{name => value}} on success, or {:error, message} on signature mismatch or topic-count mismatch"
+        "{:ok, function_name, %{name => value}} on success, or {:error, reason} where reason is a closed tagged-tuple set"
     },
+    errors: [
+      event_signature_mismatch:
+        "topics[0] did not match keccak256(canonical_signature). Reason payload: %{expected: <<32 bytes>>, got: <<32 bytes>>}.",
+      topics_length_mismatch:
+        "Number of topics did not match the indexed-parameter count (plus topics[0] when check_event_signature is true). Reason payload: %{got: integer, expected: integer}.",
+      malformed_data:
+        "Non-indexed payload bytes failed to decode (truncated, wrong type, or otherwise inconsistent with the function_selector types). Reason payload: a human-readable string describing the underlying decode failure."
+    ],
     composes_with: [:event_signature]
   )
 
+  @typedoc """
+  Closed error set returned by `decode_event/4`.
+
+  * `:event_signature_mismatch` — `topics[0]` did not match `keccak256(canonical_signature)`.
+  * `:topics_length_mismatch` — number of topics did not match the indexed-parameter count
+    (plus the implicit `topics[0]` slot when `check_event_signature: true`).
+  * `:malformed_data` — non-indexed payload failed to decode (truncated, wrong types, or
+    otherwise inconsistent with `function_selector.types`).
+  """
+  @type decode_error ::
+          {:event_signature_mismatch, %{expected: binary(), got: binary()}}
+          | {:topics_length_mismatch, length_pair()}
+          | {:malformed_data, String.t()}
+
+  @typep length_pair :: %{got: non_neg_integer(), expected: non_neg_integer()}
+
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
+
+  Returns `{:ok, function_name, args_map}` on success, or `{:error, reason}` where
+  `reason` is one of the variants in `t:decode_error/0`.
 
   ## Examples
 
@@ -89,7 +116,12 @@ defmodule ABI.Event do
       ...>       %{type: {:uint, 256}, name: "amount"},
       ...>     ]
       ...>   })
-      {:error, "Mismatched event signature topic[0], expected=DDF252AD1BE2C89B69C2B068FC378DAA952BA7F163C4A11628F55A4DF523B3EF, got=0000000000000000000000000000000000000000000000000000000000000001"}
+      {:error,
+        {:event_signature_mismatch,
+         %{
+           expected: ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],
+           got: ~h[0x0000000000000000000000000000000000000000000000000000000000000001]
+         }}}
 
       iex> ABI.Event.decode_event(
       ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],
@@ -105,7 +137,7 @@ defmodule ABI.Event do
       ...>       %{type: {:uint, 256}, name: "amount"},
       ...>     ]
       ...>   })
-      {:error, "Invalid topics length (got=2, expected=3), consider toggling `check_event_signature`"}
+      {:error, {:topics_length_mismatch, %{got: 2, expected: 3}}}
 
       iex> ABI.Event.decode_event(
       ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],
@@ -129,9 +161,13 @@ defmodule ABI.Event do
           "from" => ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
           "to" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]
       }}
+
+  When the non-indexed payload bytes are truncated or wrongly typed, the underlying
+  decoder previously raised; the function now wraps that path and returns
+  `{:error, {:malformed_data, msg}}` with a human-readable description.
   """
   @spec decode_event(binary(), [binary()], FunctionSelector.t(), keyword()) ::
-          {:ok, String.t() | nil, map()} | {:error, String.t()}
+          {:ok, String.t() | nil, map()} | {:error, decode_error()}
   def decode_event(data, topics, function_selector, opts \\ []) do
     check_event_signature = Keyword.get(opts, :check_event_signature, true)
 
@@ -146,37 +182,52 @@ defmodule ABI.Event do
         indexed_types
       end
 
-    if Enum.count(indexed_types_full) == Enum.count(topics) do
-      indexed_data =
-        indexed_types_full
-        |> Enum.zip(topics)
-        |> Map.new(fn {type, topic} ->
-          {type.name, decode_indexed(type, topic)}
-        end)
+    expected_count = Enum.count(indexed_types_full)
+    actual_count = Enum.count(topics)
 
-      [non_indexed_data] =
-        TypeDecoder.decode_raw(data, [%{type: {:tuple, non_indexed_types}}])
+    if expected_count == actual_count do
+      indexed_data = decode_indexed_topics(indexed_types_full, topics)
 
-      non_indexed_data_map =
-        non_indexed_data
-        |> Tuple.to_list()
-        |> Enum.zip(non_indexed_types)
-        |> Map.new(fn {res, %{name: name}} -> {name, res} end)
+      verified =
+        maybe_verify(indexed_data, function_selector, check_event_signature)
 
-      indexed_data_res =
-        if check_event_signature do
-          verify_event_signature(indexed_data, function_selector)
-        else
-          {:ok, indexed_data}
-        end
-
-      with {:ok, indexed_data_full} <- indexed_data_res do
-        {:ok, function_selector.function, Map.merge(indexed_data_full, non_indexed_data_map)}
+      with {:ok, idx} <- verified,
+           {:ok, non_idx} <- decode_non_indexed(data, non_indexed_types) do
+        {:ok, function_selector.function, Map.merge(idx, non_idx)}
       end
     else
-      {:error,
-       "Invalid topics length (got=#{Enum.count(topics)}, expected=#{Enum.count(indexed_types_full)}), consider toggling `check_event_signature`"}
+      lengths = %{got: actual_count, expected: expected_count}
+      {:error, {:topics_length_mismatch, lengths}}
     end
+  end
+
+  defp decode_indexed_topics(indexed_types_full, topics) do
+    indexed_types_full
+    |> Enum.zip(topics)
+    |> Map.new(fn {type, topic} -> {type.name, decode_indexed(type, topic)} end)
+  end
+
+  defp decode_non_indexed(data, non_indexed_types) do
+    tuple_type = [%{type: {:tuple, non_indexed_types}}]
+    [non_indexed_data] = TypeDecoder.decode_raw(data, tuple_type)
+
+    map =
+      non_indexed_data
+      |> Tuple.to_list()
+      |> Enum.zip(non_indexed_types)
+      |> Map.new(fn {res, %{name: name}} -> {name, res} end)
+
+    {:ok, map}
+  rescue
+    e -> {:error, {:malformed_data, Exception.message(e)}}
+  end
+
+  defp maybe_verify(indexed_data, function_selector, true) do
+    verify_event_signature(indexed_data, function_selector)
+  end
+
+  defp maybe_verify(indexed_data, _function_selector, false) do
+    {:ok, indexed_data}
   end
 
   defp decode_indexed(param, topic) do
@@ -204,14 +255,13 @@ defmodule ABI.Event do
   defp reference_type?(_), do: false
 
   defp verify_event_signature(indexed_data, function_selector) do
-    {event_signature, res} = Map.pop(indexed_data, "__abi__topic")
+    {got, res} = Map.pop(indexed_data, "__abi__topic")
     expected = event_signature(function_selector)
 
-    if event_signature == expected do
+    if got == expected do
       {:ok, res}
     else
-      {:error,
-       "Mismatched event signature topic[0], expected=#{Base.encode16(expected)}, got=#{Base.encode16(event_signature)}"}
+      {:error, {:event_signature_mismatch, %{expected: expected, got: got}}}
     end
   end
 

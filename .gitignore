@@ -36,6 +36,9 @@ src/*_parser.erl
 # Claude Code scheduling runtime lock (session-scoped PID/sessionId)
 /.claude/scheduled_tasks.lock
 
+# Per-developer hookify rules (local behavioral hooks, not project policy)
+/.claude/hookify.*.local.md
+
 # Hex docs deps cache (regenerable)
 /.hex-docs/
 

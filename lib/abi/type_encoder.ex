@@ -292,6 +292,65 @@ defmodule ABI.TypeEncoder do
     do_encode(types, data, [])
   end
 
+  api(
+    :encode_packed,
+    "Encodes values using Solidity's non-standard packed mode (abi.encodePacked) — types <32 bytes concatenated tight, dynamic types in-place without length prefix, array elements padded to 32 bytes.",
+    params: [
+      data: [
+        kind: :value,
+        description:
+          "List of values in argument order; same value shapes accepted as encode_raw/2 (numbers, binaries, lists for arrays)"
+      ],
+      types: [
+        kind: :value,
+        description:
+          "List of FunctionSelector argument-type maps (each %{type: ...}) describing the parameter sequence. Tuple/struct types and nested arrays raise — the spec does not define their packed encoding."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description:
+        "Tightly-packed bytes per the Solidity spec — never selector-prefixed and not decodable (the spec is ambiguous in the presence of multiple dynamic args)."
+    },
+    composes_with: [:encode_raw]
+  )
+
+  @doc """
+  Encodes a list of values using Solidity's
+  [non-standard packed mode](https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode).
+
+  Used primarily for `keccak256(abi.encodePacked(...))` Merkle leaves and
+  signature schemes; never used for actual function calls (the spec defines
+  no decoding function — encoding is ambiguous with multiple dynamic args).
+
+  Tuple/struct values and nested arrays raise `ArgumentError` — Solidity's
+  spec does not define their packed encoding.
+
+  ## Examples
+
+      iex> ABI.TypeEncoder.encode_packed(
+      ...>   [-1, <<0x42>>, 3, "Hello, world!"],
+      ...>   [
+      ...>     %{type: {:int, 16}},
+      ...>     %{type: {:bytes, 1}},
+      ...>     %{type: {:uint, 16}},
+      ...>     %{type: :string}
+      ...>   ]
+      ...> ) |> Base.encode16(case: :lower)
+      "ffff42000348656c6c6f2c20776f726c6421"
+  """
+  @spec encode_packed([any()], [FunctionSelector.argument_type()]) :: binary()
+  def encode_packed(data, types) when is_list(data) and is_list(types) do
+    if length(data) != length(types) do
+      raise ArgumentError,
+            "encode_packed arity mismatch: got #{length(data)} values for #{length(types)} types"
+    end
+
+    types
+    |> Enum.zip(data)
+    |> Enum.map_join(<<>>, fn {%{type: t}, v} -> packed_top(t, v) end)
+  end
+
   @spec do_encode([FunctionSelector.argument_type()], [any()], [binary()]) ::
           binary()
   defp do_encode([], _, acc), do: :erlang.iolist_to_binary(Enum.reverse(acc))
@@ -398,10 +457,137 @@ defmodule ABI.TypeEncoder do
     end
   end
 
-  @doc false
   @spec encode_bytes(binary()) :: binary()
-  def encode_bytes(bytes) do
+  defp encode_bytes(bytes) do
     Math.pad(bytes, byte_size(bytes), :right)
+  end
+
+  # Top-level packed encoding: scalars are NOT padded, dynamic types are
+  # encoded in-place without a length prefix, arrays delegate to packed_array
+  # (which DOES pad each element to 32 bytes per the spec).
+
+  defp packed_top({:uint, size}, value), do: pack_uint(value, size)
+
+  defp packed_top({:int, size}, value), do: pack_int(value, size)
+
+  defp packed_top(:address, value) when is_binary(value) and byte_size(value) == 20, do: value
+  defp packed_top(:address, value) when is_integer(value), do: pack_uint(value, 160)
+
+  defp packed_top(:bool, true), do: <<1>>
+  defp packed_top(:bool, false), do: <<0>>
+  defp packed_top(:bool, v), do: raise(ArgumentError, "encode_packed bool: invalid value #{inspect(v)}")
+
+  defp packed_top({:bytes, size}, value) when is_binary(value) and byte_size(value) == size, do: value
+
+  defp packed_top({:bytes, size}, value) when is_binary(value) do
+    raise ArgumentError,
+          "encode_packed bytes#{size}: size mismatch (expected #{size} bytes, got #{byte_size(value)})"
+  end
+
+  defp packed_top(:bytes, value) when is_binary(value), do: value
+  defp packed_top(:string, value) when is_binary(value), do: value
+
+  defp packed_top({:array, inner, n}, list) when is_list(list) and length(list) == n do
+    packed_array(inner, list)
+  end
+
+  defp packed_top({:array, _, n}, list) when is_list(list) do
+    raise ArgumentError,
+          "encode_packed array: size mismatch (expected #{n}, got #{length(list)})"
+  end
+
+  defp packed_top({:array, inner}, list) when is_list(list), do: packed_array(inner, list)
+
+  defp packed_top({:tuple, _}, _) do
+    raise ArgumentError,
+          "encode_packed: tuple/struct types are not supported by Solidity's packed mode (see https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode)"
+  end
+
+  defp packed_top(other, _) do
+    raise ArgumentError, "encode_packed: unsupported type #{inspect(other)}"
+  end
+
+  # Inside-array packed encoding: each element padded to 32 bytes (per spec).
+  # Nested arrays and tuples raise — neither is supported.
+
+  defp packed_array({:array, _, _}, _) do
+    raise ArgumentError, "encode_packed: nested arrays are not supported by Solidity's packed mode"
+  end
+
+  defp packed_array({:array, _}, _) do
+    raise ArgumentError, "encode_packed: nested arrays are not supported by Solidity's packed mode"
+  end
+
+  defp packed_array({:tuple, _}, _) do
+    raise ArgumentError,
+          "encode_packed: tuple/struct types are not supported by Solidity's packed mode"
+  end
+
+  defp packed_array(:string, list) do
+    Enum.map_join(list, <<>>, &pad_right_to_32_multiple/1)
+  end
+
+  defp packed_array(:bytes, list) do
+    Enum.map_join(list, <<>>, &pad_right_to_32_multiple/1)
+  end
+
+  defp packed_array(inner, list) do
+    # uint/int/bool/address/bytes<N>: encode_type already pads to 32 bytes
+    # via Math.pad's 32-byte rounding rule, so we reuse it directly.
+    Enum.map_join(list, <<>>, fn value ->
+      {encoded, []} = encode_type(inner, [value])
+      encoded
+    end)
+  end
+
+  defp pad_right_to_32_multiple(bin) when is_binary(bin) do
+    size = byte_size(bin)
+    pad = Math.mod(32 - Math.mod(size, 32), 32)
+    bin <> :binary.copy(<<0>>, pad)
+  end
+
+  defp pack_uint(int, bits) when is_integer(int) and rem(bits, 8) == 0 and bits > 0 and bits <= 256 do
+    if int < 0 do
+      raise ArgumentError, "encode_packed uint#{bits}: negative value #{int}"
+    end
+
+    max = Bitwise.bsl(1, bits)
+
+    if int >= max do
+      raise ArgumentError, "encode_packed uint#{bits}: #{int} doesn't fit in uint#{bits}"
+    end
+
+    bytes = div(bits, 8)
+    bin = :binary.encode_unsigned(int)
+    pad_size = bytes - byte_size(bin)
+    :binary.copy(<<0>>, pad_size) <> bin
+  end
+
+  defp pack_uint(bin, bits) when is_binary(bin) and rem(bits, 8) == 0 do
+    bytes = div(bits, 8)
+
+    if byte_size(bin) > bytes do
+      raise ArgumentError,
+            "encode_packed uint#{bits}: binary too long (#{byte_size(bin)} bytes for uint#{bits})"
+    end
+
+    pad_size = bytes - byte_size(bin)
+    :binary.copy(<<0>>, pad_size) <> bin
+  end
+
+  defp pack_int(int, bits) when is_integer(int) and rem(bits, 8) == 0 and bits > 0 and bits <= 256 do
+    max = Bitwise.bsl(1, bits - 1)
+
+    if int >= max or int < -max do
+      raise ArgumentError,
+            "encode_packed int#{bits}: #{int} doesn't fit in signed range (-#{max}..#{max - 1})"
+    end
+
+    if int >= 0 do
+      pack_uint(int, bits)
+    else
+      pack_uint(Bitwise.bsl(1, bits) + int, bits)
+    end
   end
 
   defp encode_int(int, desired_size_bits) when rem(desired_size_bits, 8) == 0 and is_integer(int) do

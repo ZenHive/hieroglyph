@@ -16,8 +16,7 @@ defmodule ABI.AgentEconomyTest do
   @doc_false_exports MapSet.new([
                        {ABI.FunctionSelector, :dynamic?, 1},
                        {ABI.FunctionSelector, :get_function_type, 1},
-                       {ABI.FunctionSelector, :get_state_mutability, 1},
-                       {ABI.TypeEncoder, :encode_bytes, 1}
+                       {ABI.FunctionSelector, :get_state_mutability, 1}
                      ])
 
   describe "api() annotations" do
