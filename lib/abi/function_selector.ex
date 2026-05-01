@@ -4,6 +4,8 @@ defmodule ABI.FunctionSelector do
   `my_function(uint64, string[])`.
   """
 
+  use Descripex, namespace: "/selector"
+
   alias ABI.Parser
 
   @typedoc """
@@ -49,6 +51,24 @@ defmodule ABI.FunctionSelector do
         }
 
   defstruct [:function, :function_type, :state_mutability, :types, :returns]
+
+  api(
+    :decode,
+    "Parse a Solidity function or event signature string into a FunctionSelector struct exposing function name, parameter types, and (when present) named parameters.",
+    params: [
+      signature: [
+        kind: :value,
+        description:
+          "Signature string such as transfer(address,uint256), or a parenthesized type list such as (uint256,bool); supports nested tuples and arrays, optional parameter names, and the indexed keyword for event parameters"
+      ]
+    ],
+    returns: %{
+      type: :struct,
+      description:
+        "ABI.FunctionSelector struct with :function, :types, optional :function_type/:state_mutability/:returns/:indexed metadata"
+    },
+    composes_with: [:encode]
+  )
 
   @doc """
   Decodes a function selector to a struct.
@@ -150,6 +170,19 @@ defmodule ABI.FunctionSelector do
     Parser.parse!(signature, as: :selector)
   end
 
+  api(
+    :decode_raw,
+    "Parse a comma-separated list of Solidity type names into a list of internal type representations, without function-name framing.",
+    params: [
+      type_string: [
+        kind: :value,
+        description:
+          "Comma-separated type names such as string,uint256 (no surrounding parens, no function name); empty string returns []"
+      ]
+    ],
+    returns: %{type: :list, description: "Ordered list of internal type tuples like [:string, {:uint, 256}]"}
+  )
+
   @doc """
   Decodes the given type-string as a simple array of types.
 
@@ -166,6 +199,23 @@ defmodule ABI.FunctionSelector do
     {:tuple, types} = decode_type("(#{type_string})")
     Enum.map(types, fn argument_type -> argument_type.type end)
   end
+
+  api(
+    :parse_specification_item,
+    "Parse a single ABI specification item (function, event, fallback, receive, error) from a decoded JSON ABI map into a FunctionSelector struct.",
+    params: [
+      item: [
+        kind: :value,
+        description:
+          "Map decoded from a contract ABI JSON entry, with string keys: type (function/event/error/...), name, inputs, outputs, stateMutability, components for tuples"
+      ]
+    ],
+    returns: %{
+      type: :struct,
+      description:
+        "ABI.FunctionSelector populated with :function, :function_type, :state_mutability, :types, and :returns from the JSON entry"
+    }
+  )
 
   @doc """
   Parse a function selector, e.g. from an abi.json file.
@@ -348,6 +398,22 @@ defmodule ABI.FunctionSelector do
     decode_type(type)
   end
 
+  api(
+    :decode_type,
+    "Parse a single Solidity type expression into the internal type representation. Useful for one-off type parsing without function-name framing.",
+    params: [
+      single_type: [
+        kind: :value,
+        description:
+          "Single Solidity type such as uint256, (bool,address), or address[][3]; supports nested tuples and arrays"
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description: "Internal type representation such as {:uint, 256}, {:tuple, [...]}, or {:array, type, count}"
+    }
+  )
+
   @doc """
   Decodes the given type-string as a single type.
 
@@ -366,6 +432,32 @@ defmodule ABI.FunctionSelector do
   def decode_type(single_type) do
     Parser.parse!(single_type, as: :type)
   end
+
+  api(
+    :encode,
+    "Render a FunctionSelector struct as its canonical Solidity signature string, optionally annotating indexed event params and parameter names.",
+    params: [
+      function_selector: [kind: :value, description: "FunctionSelector with :function and :types"],
+      indexed: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, append the indexed keyword after parameter types whose argument map carries indexed: true (event signatures)"
+      ],
+      names: [
+        kind: :value,
+        default: false,
+        description:
+          "When true, append parameter names after each type (uses :name from the argument map, or var0/var1/... when missing)"
+      ]
+    ],
+    returns: %{
+      type: :string,
+      description:
+        "Canonical signature string such as transfer(address,uint256), or with indexed/names annotations applied"
+    },
+    composes_with: [:decode]
+  )
 
   @doc """
   Encodes a function call signature. If `indexed=true`, returns

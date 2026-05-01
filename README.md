@@ -160,10 +160,14 @@ ABI.__api__(:encode)           # one entry by name
 Static manifest emission (JSON-serializable representation of every annotated function — params, returns, errors, specs, descriptions):
 
 ```bash
+mix hieroglyph.manifest                    # writes api_manifest.json in project root
+mix hieroglyph.manifest /path/to/out.json  # custom output path
+
+# Equivalent direct invocation of the descripex builtin:
 mix descripex.manifest --app hieroglyph --pretty --output api_manifest.json
 ```
 
-The manifest is suitable for downstream CI to diff across `hieroglyph` version bumps as a contract-stability check — silent contract drift in this library propagates as compile errors through cartouche-generated bindings into every onchain consumer. A dedicated `mix hieroglyph.manifest` task ships in 1.2.0 alongside this section (see CHANGELOG).
+The manifest is suitable for downstream CI (cartouche-generated bindings, onchain consumers) to diff across `hieroglyph` version bumps as a contract-stability check — silent contract drift in this library propagates as compile errors three layers down through generated bindings into every onchain_<protocol> package.
 
 ## Support
 

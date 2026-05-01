@@ -7,9 +7,45 @@ defmodule ABI.Event do
   `topics[0]` matches the `keccak256` hash of the event signature.
   """
 
+  use Descripex, namespace: "/selector"
+
   alias ABI.FunctionSelector
   alias ABI.Math
   alias ABI.TypeDecoder
+
+  api(
+    :decode_event,
+    "Decode an Ethereum event log, splitting indexed parameters from topics and non-indexed parameters from the data blob, optionally verifying topics[0] against the event signature.",
+    params: [
+      data: [
+        kind: :exchange_data,
+        description: "Non-indexed event payload (binary); originates from the log's data field returned by eth_getLogs",
+        source: "eth_getLogs"
+      ],
+      topics: [
+        kind: :exchange_data,
+        description:
+          "List of topic binaries (each 32 bytes). topics[0] is the event signature hash unless check_event_signature is false",
+        source: "eth_getLogs"
+      ],
+      function_selector: [
+        kind: :value,
+        description: "Pre-parsed FunctionSelector with type metadata including indexed flags"
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Optional keyword list. Supports check_event_signature: false to skip topics[0] verification (anonymous events or pre-stripped topics)"
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "{:ok, function_name, %{name => value}} on success, or {:error, message} on signature mismatch or topic-count mismatch"
+    },
+    composes_with: [:event_signature]
+  )
 
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
@@ -179,6 +215,16 @@ defmodule ABI.Event do
     end
   end
 
+  api(
+    :event_signature,
+    "Compute the keccak-256 hash of the event's canonical signature, used as topics[0] in event logs.",
+    params: [
+      function_selector: [kind: :value, description: "Event FunctionSelector with name and type metadata"]
+    ],
+    returns: %{type: :binary, description: "32-byte topic hash matching the first topic of an emitted log for this event"},
+    composes_with: [:decode_event]
+  )
+
   @doc ~S"""
   Returns the signature of an event, i.e. the first item that appears
   in an Ethereum log for this event.
@@ -204,6 +250,25 @@ defmodule ABI.Event do
     |> FunctionSelector.encode()
     |> Math.kec()
   end
+
+  api(
+    :canonical,
+    "Render the canonical signature string of an event for hashing or display, optionally including indexed and parameter-name annotations.",
+    params: [
+      function_selector: [kind: :value, description: "Event FunctionSelector with name and type metadata"],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Optional keyword list. Supports indexed: true to include the indexed keyword on indexed parameters, and names: true to include parameter names"
+      ]
+    ],
+    returns: %{
+      type: :string,
+      description:
+        "Canonical signature string such as Transfer(address,address,uint256) or with indexed/names annotations applied"
+    }
+  )
 
   @doc ~S"""
   Returns the canonical form of this event topic. Pass in `indexed: true`

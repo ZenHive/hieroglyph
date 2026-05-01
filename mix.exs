@@ -21,6 +21,7 @@ defmodule ABI.Mixfile do
       start_permanent: Mix.env() == :prod,
       compilers: [:yecc, :leex] ++ Mix.compilers(),
       aliases: aliases(),
+      dialyzer: [plt_add_apps: [:mix, :descripex]],
       deps: deps()
     ]
   end

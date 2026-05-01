@@ -6,8 +6,35 @@ defmodule ABI.TypeDecoder do
   specification.
   """
 
+  use Descripex, namespace: "/codec"
+
   alias ABI.FunctionSelector
   alias ABI.Math
+
+  api(
+    :decode,
+    "Decode an ABI-encoded payload into a list of values, using a FunctionSelector to drive type interpretation.",
+    params: [
+      encoded_data: [
+        kind: :value,
+        description:
+          "Raw ABI payload (selector prefix already stripped); pass the binary that follows the 4-byte method id"
+      ],
+      function_selector: [
+        kind: :value,
+        description:
+          "Pre-parsed FunctionSelector. When :function is non-nil, the payload is interpreted as a single tuple (call-args shape); otherwise types are read sequentially"
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Optional keyword list. Supports decode_structs: true to render named tuples as maps with snake_case atom keys"
+      ]
+    ],
+    returns: %{type: :list, description: "List of decoded values in argument order"},
+    composes_with: [:decode_raw]
+  )
 
   @doc """
   Decodes the given data based on the function selector.
@@ -184,6 +211,30 @@ defmodule ABI.TypeDecoder do
     end
   end
 
+  api(
+    :decode_raw,
+    "Decode an ABI-encoded payload directly against an explicit type list, without consulting a FunctionSelector.",
+    params: [
+      encoded_data: [
+        kind: :value,
+        description: "Raw ABI payload — for example return values, event log data, or pre-routed calldata"
+      ],
+      types: [
+        kind: :value,
+        description:
+          "List of FunctionSelector argument-type maps (each %{type: ...} optionally with :name) describing the expected sequence"
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Optional keyword list. Supports decode_structs: true to render named tuples as maps with snake_case atom keys"
+      ]
+    ],
+    returns: %{type: :list, description: "List of decoded values in type order"},
+    composes_with: [:decode]
+  )
+
   @doc """
   Similar to `ABI.TypeDecoder.decode/2` except accepts a list of types instead
   of a function selector.
@@ -313,6 +364,28 @@ defmodule ABI.TypeDecoder do
     raise "Unsupported decoding type: #{inspect(els)}"
   end
 
+  api(
+    :tuple_value,
+    "Combine a list of ABI argument types with decoded element values, returning either a tuple or, when decode_structs is enabled and every type carries a non-empty :name, a map keyed by snake_case atom field names.",
+    params: [
+      types: [
+        kind: :value,
+        description: "List of FunctionSelector argument-type maps; each must carry :name for the struct branch to apply"
+      ],
+      elements: [kind: :value, description: "Decoded values in the same order as types"],
+      decode_structs: [
+        kind: :value,
+        description:
+          "Boolean flag. When true and every type has a non-empty :name, returns a map; otherwise returns a tuple"
+      ]
+    ],
+    returns: %{
+      type: :union,
+      description:
+        "Map keyed by atom field names when decode_structs is true and all names are present; otherwise a tuple of the elements in order"
+    }
+  )
+
   @doc """
   Combines a list of ABI argument types with a list of decoded element values
   into either a tuple or (when `decode_structs` is true and every type carries
@@ -360,6 +433,24 @@ defmodule ABI.TypeDecoder do
 
     {value, rest}
   end
+
+  api(
+    :decode_bytes,
+    "Read size_in_bytes of content from a 32-byte-aligned ABI word, skipping padding on the matching side. Used to extract address, uint/int, bytes<M>, and string payloads from their slots.",
+    params: [
+      data: [kind: :value, description: "Binary containing one padded ABI word followed by remaining bytes"],
+      size_in_bytes: [kind: :value, description: "Logical field width to extract from the padded slot"],
+      padding_direction: [
+        kind: :value,
+        description: "Side that was padded — :left for address/uint/int, :right for bytes<M>/string"
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "Two-tuple {value, rest} where value is the unpadded content and rest is whatever follows the padded word"
+    }
+  )
 
   @doc """
   Reads `size_in_bytes` of content out of `data`, skipping the 32-byte-slot

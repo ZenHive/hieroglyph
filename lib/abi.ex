@@ -22,7 +22,14 @@ defmodule ABI do
   use Descripex, namespace: "/abi"
 
   use Descripex.Discoverable,
-    modules: [ABI]
+    modules: [
+      ABI,
+      ABI.Event,
+      ABI.FunctionSelector,
+      ABI.TypeEncoder,
+      ABI.TypeDecoder,
+      ABI.Math
+    ]
 
   alias ABI.Event
   alias ABI.FunctionSelector

@@ -5,8 +5,32 @@ defmodule ABI.TypeEncoder do
   array of data and encode that array according to the specification.
   """
 
+  use Descripex, namespace: "/codec"
+
   alias ABI.FunctionSelector
   alias ABI.Math
+
+  api(
+    :encode,
+    "Encode a list of values into ABI calldata using the given FunctionSelector, prefixing the 4-byte selector when the function name is set.",
+    params: [
+      data: [
+        kind: :value,
+        description:
+          "List of values in argument order; tuples may be passed as Elixir tuples, lists for arrays, and named maps for tuple/struct types whose argument metadata carries :name"
+      ],
+      function_selector: [
+        kind: :value,
+        description:
+          "Pre-parsed FunctionSelector. When :function is non-nil, the 4-byte method id is prepended; when nil, the head/tail body is emitted without prefix"
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description: "ABI-encoded calldata (selector-prefixed when the function name is set, raw payload otherwise)"
+    },
+    composes_with: [:encode_raw]
+  )
 
   @doc """
   Encodes the given data based on the function selector.
@@ -232,6 +256,24 @@ defmodule ABI.TypeEncoder do
   defp do_encode_data(data, %FunctionSelector{} = function_selector) do
     encode_raw([List.to_tuple(data)], [%{type: {:tuple, function_selector.types}}])
   end
+
+  api(
+    :encode_raw,
+    "Encode a list of values directly against an explicit type list, without prepending a method-id selector. Used for return values, event data, or pre-routed calldata payloads.",
+    params: [
+      data: [
+        kind: :value,
+        description: "List of values in type order; same shapes accepted as encode/2 (tuples, lists, named maps)"
+      ],
+      types: [
+        kind: :value,
+        description:
+          "List of FunctionSelector argument-type maps (each %{type: ...} optionally with :name) describing the parameter sequence"
+      ]
+    ],
+    returns: %{type: :binary, description: "ABI-encoded payload with no selector prefix"},
+    composes_with: [:encode]
+  )
 
   @doc """
   Simiar to `ABI.TypeEncoder.encode/2` except we accept

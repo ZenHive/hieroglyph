@@ -3,6 +3,16 @@ defmodule ABI.Math do
   Helper functions for ABI's math functions.
   """
 
+  use Descripex, namespace: "/math"
+
+  api(:mod, "Compute integer modulo with sign-aware behavior, returning a non-negative result for negative dividends.",
+    params: [
+      x: [kind: :value, description: "Integer dividend (any sign)"],
+      n: [kind: :value, description: "Positive integer divisor"]
+    ],
+    returns: %{type: :integer, description: "Non-negative remainder in the range 0..n-1"}
+  )
+
   @doc """
   Simple function to compute modulo function to work on integers of any sign.
 
@@ -19,11 +29,26 @@ defmodule ABI.Math do
 
       iex> ABI.Math.mod(0, 1337)
       0
+
+      iex> ABI.Math.mod(-7, 5)
+      3
+
+      iex> ABI.Math.mod(-1338, 1337)
+      1336
   """
   @spec mod(integer(), pos_integer()) :: non_neg_integer()
   def mod(x, n) when x > 0, do: rem(x, n)
-  def mod(x, n) when x < 0, do: rem(n + x, n)
+  def mod(x, n) when x < 0, do: rem(rem(x, n) + n, n)
   def mod(0, _n), do: 0
+
+  api(
+    :kec,
+    "Compute the keccak-256 hash of a binary input. The hash function used throughout Ethereum and the ABI spec for selector and event-topic derivation.",
+    params: [
+      data: [kind: :value, description: "Binary input of any length"]
+    ],
+    returns: %{type: :binary, description: "32-byte keccak-256 digest"}
+  )
 
   @doc """
   Returns the keccak sha256 of a given input.
@@ -44,6 +69,28 @@ defmodule ABI.Math do
   def kec(data) do
     ExSha3.keccak_256(data)
   end
+
+  api(:pad, "Pad a binary up to the next 32-byte ABI word boundary, with side and fill byte chosen by argument.",
+    params: [
+      bin: [kind: :value, description: "The binary content to pad"],
+      size_in_bytes: [
+        kind: :value,
+        description:
+          "Logical field width used to compute the word boundary; output is rounded up to the next 32-byte multiple from this value"
+      ],
+      direction: [
+        kind: :value,
+        description:
+          "Padding side — :left for left-aligned types like uint/int/address, :right for right-padded types like bytes<M> and string"
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description: "Optional keyword list. Supports fill_byte: <<0xFF>> for signed sign-extension; defaults to <<0x00>>"
+      ]
+    ],
+    returns: %{type: :binary, description: "Padded binary aligned to a 32-byte multiple"}
+  )
 
   @doc """
   Pads a binary up to the next 32-byte ABI word boundary.
@@ -88,6 +135,24 @@ defmodule ABI.Math do
       :right -> bin <> padding
     end
   end
+
+  api(
+    :unpad,
+    "Inverse of pad/4. Reads size_in_bytes of content out of data, skipping 32-byte-slot padding on the matching side.",
+    params: [
+      data: [kind: :value, description: "Binary containing one padded ABI word followed by remaining bytes"],
+      size_in_bytes: [kind: :value, description: "Logical field width to extract from the padded slot"],
+      padding_direction: [
+        kind: :value,
+        description: "Side that was padded — :left for address/uint/int, :right for bytes<M>/string"
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "Two-tuple {value, rest} where value is the unpadded content and rest is whatever follows the padded word"
+    }
+  )
 
   @doc """
   Inverse of `pad/4`. Reads `size_in_bytes` of content out of `data`,

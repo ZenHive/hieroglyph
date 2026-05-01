@@ -12,26 +12,21 @@
 
 ## 🎯 Current Focus
 
+**1.2.0 shipped 2026-05-01** — bundled Agent Economy release. All three phases landed: top-level `ABI` plus the five remaining public modules annotated with `api()` declarations, `Descripex.Discoverable` wired across the full surface, dedicated `mix hieroglyph.manifest [path]` task, and a hint-rot validation test (`test/abi/agent_economy_test.exs`) whose load-bearing cross-check asserts every non-framework export is declared with `api()`. Manifest now emits 25 user-declared entries plus 4 framework `Discoverable` exports — suitable for downstream cartouche/onchain CI to diff across version bumps as a contract-stability artifact. Added runtime dep `{:descripex, "~> 0.6"}` (transitively pulls `:json_spec`). See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
+
 **1.1.0 shipped 2026-05-01** — patch-bumped from `1.0.0` to a minor release because two new public APIs were added (`ABI.method_id/1`, `ABI.decode_call/3`) alongside the bug fixes. See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01) for the full entry list.
 
-Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. Other fork-only polish (padding-helper extraction, `is_dynamic?` → `dynamic?` rename, `mix credo --strict` cleanup) landed in 1.0.0; the round-trip property suite (which surfaced #55 on first run), the `dynamic?/1` zero-length-fixed-array crash, `address payable` typedoc gap, empty-args calldata coverage, and the new `decode_call/3` + `method_id/1` APIs all landed in 1.1.0. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) shipped under `## [Unreleased]` and routes the explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms through the same friendly rejection path as the bare forms. The 2026-04-30 `defi-skills` mining discovery task completed — 7 candidate test/coverage entries staged in "Proposed additions from defi-skills mining" below for triage into existing sections (one — empty-args calldata — landed in 1.1.0).
+Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) also shipped in 1.2.0.
 
-**Next direction (post-1.1.0):** Agent Economy phase. The downstream consumer chain — cartouche (codegen) → onchain → onchain_<protocol> — already pins this library's public API via generated bindings, so a Descripex manifest doubles as the contract-stability artifact those packages can diff in CI on version bumps. The MPP-fronted API service at the edge of that tree is a tertiary consumer (paid-tool catalog). See the new section below. **Phase 1 shipped under `## [Unreleased]`** — `ABI` top-level annotated with seven `api()` blocks, `Descripex.Discoverable` wired, version bumped to `1.2.0`. Phases 2 (annotate the remaining five public modules) and 3 (`mix hieroglyph.manifest` + hint-rot validation test) still open before the bundled `1.2.0` release ships.
+**Next direction (post-1.2.0):** the two remaining bundles below — DeFi Real-World Fixtures (golden calldata + selector vectors from `defi-skills` v0.3.0 mining) and Property Suite Expansion (`tuple[]` round-trip, empty-collection fixtures, multiple top-level struct args, deeper nesting). Plus the standalone open tasks in subsequent sections.
 
-**Shipping units:** see `📦 Bundles` below for the three release-bundles currently grouped (1.2.0 Agent Economy, DeFi Real-World Fixtures, Property Suite Expansion). The other 7 open tasks ship standalone.
+**Shipping units:** see `📦 Bundles` below for the two remaining release-bundles. The other open tasks ship standalone.
 
 ---
 
 ## 📦 Bundles
 
 Tasks grouped by shipping unit. A bundle ships as one PR / one release; member tasks share scope, files, or sourcing. Standalone tasks (no `**Bundle:**` annotation on the task itself) ship independently. Each member task keeps its own D/B/U score — the per-bundle "Avg Eff" below is a planning convenience, not a substitute.
-
-### Bundle: 1.2.0 — Agent Economy
-**Members:** Agent Economy Phase 1, Phase 2, Phase 3
-**Avg Eff:** 2.54 — (3.50 + 1.375 + 2.75) / 3
-**Ships:** as the `1.2.0` release
-**Why bundle:** Phase 1 alone (top-level `ABI` only) gives partial manifest coverage; Phase 3 alone (manifest task + validation test) has nothing to validate without Phases 1+2; the hint-rot cross-check in Phase 3 only protects what Phases 1+2 declare. Three pieces, one capability. Splitting releases would force a 1.2.0 → 1.2.1 → 1.2.2 chain, each bump churning the manifest hash that every downstream cartouche/onchain consumer pins against.
-**Sequencing:** Phase 1 → Phase 2 → Phase 3. Each phase's acceptance criteria depend on the previous landing.
 
 ### Bundle: DeFi Real-World Fixtures
 **Members:** Real-world golden calldata fixtures from `defi-skills build`, Function selector golden vectors against `FunctionSelector.encode/1`
@@ -55,7 +50,7 @@ Tasks grouped by shipping unit. A bundle ships as one PR / one release; member t
 |---|---|---|---|
 | **Indexed reference-type event parameters decoded wrong** | ✅ shipped 1.0.0 [upstream #53](https://github.com/exthereum/abi/issues/53) | `lib/abi/event.ex:146-172` | Fix shipped: indexed reference-type params (all arrays — fixed-size or dynamic — plus tuples, `string`, `bytes`) now return `{:indexed_hash, <<32 bytes>>}` via a local `reference_type?/1` predicate (matches the Solidity spec's "all complex types" event-indexing rule, which is broader than `FunctionSelector.dynamic?/1`'s head/tail-layout rule — `uint256[2]` and static-only tuples are static for regular encoding but still hashed in topics). Static value-type indexed params unchanged. See [CHANGELOG.md](CHANGELOG.md#100---2026-04-24). |
 | **`fixed`/`ufixed`/`function` types parse but can't encode + typespec gaps** | ✅ shipped 1.0.0 [upstream #54](https://github.com/exthereum/abi/issues/54) | `lib/abi/parser.ex`, `lib/abi/function_selector.ex:9-19` | Fix shipped: parse-time rejection of `:function`, `{:fixed, M, N}`, `{:ufixed, M, N}` (including nested in arrays/tuples) in `ABI.Parser.parse!/2` with an `ArgumentError` linking to the upstream issue; `{:bytes, pos_integer()}` added to `@type type`. See [CHANGELOG.md](CHANGELOG.md#100---2026-04-24). |
-| **Lexer `x` terminal shadowed by LETTERS rule** | ✅ shipped Unreleased (upstream filing deferred — batched into a future combined-bugs issue) | `src/ethereum_abi_lexer.xrl`, `src/ethereum_abi_parser.yrl` | Fix shipped: dedicated `fixed_typename` / `ufixed_typename` terminals in the lexer so the `'x'` separator only appears in `fixed`/`ufixed` contexts; `'x'` rule moved before `{LETTERS}` so single `x` lexes as the terminal; parser gains `identifier_part -> 'x' \| fixed_typename \| ufixed_typename` so single-char `x` and the keyword forms still work as function/argument names. The explicit-M/N forms now route through `ABI.Parser.reject_unsupported!/1` and raise the same friendly `ArgumentError` (with upstream-#54 link) that bare `fixed`/`ufixed` already do. New shift/reduce count is 3 (was 1) — the 2 new conflicts resolve as shift, which is the desired behavior; documented inline in the `.yrl`. See [CHANGELOG.md](CHANGELOG.md#unreleased). |
+| **Lexer `x` terminal shadowed by LETTERS rule** | ✅ shipped 1.2.0 (upstream filing deferred — batched into a future combined-bugs issue) | `src/ethereum_abi_lexer.xrl`, `src/ethereum_abi_parser.yrl` | Fix shipped: dedicated `fixed_typename` / `ufixed_typename` terminals in the lexer so the `'x'` separator only appears in `fixed`/`ufixed` contexts; `'x'` rule moved before `{LETTERS}` so single `x` lexes as the terminal; parser gains `identifier_part -> 'x' \| fixed_typename \| ufixed_typename` so single-char `x` and the keyword forms still work as function/argument names. The explicit-M/N forms now route through `ABI.Parser.reject_unsupported!/1` and raise the same friendly `ArgumentError` (with upstream-#54 link) that bare `fixed`/`ufixed` already do. New shift/reduce count is 3 (was 1) — the 2 new conflicts resolve as shift, which is the desired behavior; documented inline in the `.yrl`. See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01). |
 | **`encode_bytes/1` accidentally public** | ⬜ (no issue) | `lib/abi/type_encoder.ex:353` | No `@doc`, no `@spec`, no internal callers outside module. Changing `def` → `defp` is technically a breaking API change for downstream consumers we can't see — Codex review flagged this. Skip the issue; fold into a future PR or leave alone. **Docs:** CHANGELOG entry (breaking, if changed). |
 | **`decode_event/4` mixed raise + tagged-tuple contract** | ⬜ (hold) | `lib/abi/event.ex:93-148` | Returns `{:error, _}` for topic/length mismatches but calls `decode_raw` internally, which raises on malformed data. Scope of change = arguable 2.0 breaking API — discuss before PR, not yet filed upstream. **Docs:** CHANGELOG entry (breaking); possibly README note on the unified return contract. |
 | **`dynamic?/1` crashes on zero-length fixed array** | ✅ shipped 1.1.0 (no upstream issue yet) | `lib/abi/function_selector.ex:484` | One-line fix shipped: `def dynamic?({:array, _type, 0}), do: false`. Encoder/decoder paths already handle zero-length arrays correctly — verified by extending `roundtrip_property_test.exs`'s fixed-array length domain to `0..3`. Pre-existing in upstream `exthereum/abi`; not yet filed (consider folding with the lexer-rule-ordering fix into a single PR). See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01). |
@@ -87,42 +82,14 @@ hieroglyph ← cartouche ← onchain ← {onchain_aave, onchain_evm, onchain_js,
 
 **Precedent:** `~/_DATA/code/mpp` (`lib/mpp.ex` for Discoverable setup, `lib/mpp/amount.ex` and `lib/mpp/mcp.ex` for `api()` shapes including the polymorphic-arg pattern, `lib/mix/tasks/mpp.manifest.ex` for the manifest task, `test/mpp/descripex_test.exs` for the hint-rot validation test). Match its conventions.
 
-- [x] ✅ Phase 1: Descripex on `ABI` top-level [D:2/B:7/U:7 → Eff:3.50] — shipped under `## [Unreleased]`
-      Added `{:descripex, "~> 0.6"}` as a runtime dep, annotated the seven public functions in `lib/abi.ex` (`encode/2`, `method_id/1`, `decode/3`, `decode_call/3`, `decode_event/4`, `event_signature/1`, `parse_specification/1`) with `api()` declarations under namespace `/abi`, and wired `use Descripex.Discoverable, modules: [ABI]`. Acceptance verified via `mix run`: `ABI.describe/0..2` returns hints; `ABI.__api__()` lists all seven; `mix descripex.manifest --app hieroglyph` emits 11 entries (7 annotated + 4 Discoverable bookkeeping). Version bumped `1.1.0` → `1.2.0`. See [CHANGELOG.md](CHANGELOG.md#unreleased).
+- [x] ✅ Phase 1: Descripex on `ABI` top-level [D:2/B:7/U:7 → Eff:3.50] — shipped in `1.2.0`
+      Added `{:descripex, "~> 0.6"}` as a runtime dep, annotated the seven public functions in `lib/abi.ex` (`encode/2`, `method_id/1`, `decode/3`, `decode_call/3`, `decode_event/4`, `event_signature/1`, `parse_specification/1`) with `api()` declarations under namespace `/abi`, and wired `use Descripex.Discoverable, modules: [ABI]`. Acceptance verified via `mix run`: `ABI.describe/0..2` returns hints; `ABI.__api__()` lists all seven; `mix descripex.manifest --app hieroglyph` emits 11 entries (7 annotated + 4 Discoverable bookkeeping). Version bumped `1.1.0` → `1.2.0`. See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
 
-- [ ] Phase 2: Descripex on remaining public modules [D:4/B:6/U:5 → Eff:1.375] 📋
-      Annotate the 13 remaining public functions: `ABI.Event` (3 fns: `decode_event/4`, `event_signature/1`, `canonical/2`); `ABI.FunctionSelector` (5 — skip the 3 already `@doc false` — public ones: `decode/1`, `decode_raw/1`, `parse_specification_item/1`, `decode_type/1`, `encode/3`); `ABI.TypeEncoder` (2 — skip the 1 `@doc false` — public: `encode/2`, `encode_raw/2`); `ABI.TypeDecoder` (4: `decode/3`, `decode_raw/3`, `tuple_value/3`, `decode_bytes/3`); `ABI.Math` (4: `mod/2`, `kec/1`, `pad/4`, `unpad/3`).
+- [x] ✅ Phase 2: Descripex on remaining public modules [D:4/B:6/U:5 → Eff:1.375] — shipped in `1.2.0`
+      Annotated all 18 documented public functions across `ABI.Event` (`/selector`), `ABI.FunctionSelector` (`/selector` — 3 `@doc false` internals excluded), `ABI.TypeEncoder` (`/codec` — `encode_bytes/1` `@doc false` excluded), `ABI.TypeDecoder` (`/codec`), and `ABI.Math` (`/math`). `composes_with:` links wired across the natural pairings. Extended `use Descripex.Discoverable, modules: [...]` to all six annotated modules. Manifest now emits 25 user-declared `api()` entries plus 4 framework `Discoverable` exports. See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
 
-      None of these are polymorphic — schemas are mechanical once Phase 1 has settled the descriptive-blurb pattern.
-
-      Update `use Descripex.Discoverable, modules: […]` to include all six annotated modules. Namespace assignment (single-segment, lowercase, group by concept per the mpp pattern):
-        - `ABI` → `/abi`
-        - `ABI.Event`, `ABI.FunctionSelector` → `/selector` (both deal with signatures/selectors)
-        - `ABI.TypeEncoder`, `ABI.TypeDecoder` → `/codec`
-        - `ABI.Math` → `/math`
-
-      Implementing session may adjust groupings — these are starting suggestions, not mandatory.
-
-      **Acceptance:** `ABI.describe()` lists all six modules; every public, non-`@doc false` function returns hints via `ABI.describe(:module, :function)`; `mix descripex.manifest --app hieroglyph` emits 25 function entries; namespace assertions in the validation test pass.
-
-      **Bundle:** 1.2.0 — Agent Economy
-      **Docs:** CHANGELOG entry. (No new README section — Phase 1 already planted "Agent Integration".)
-
-- [ ] Phase 3: Custom manifest task + hint-rot validation test [D:2/B:5/U:6 → Eff:2.75] 🎯
-      Add `lib/mix/tasks/hieroglyph.manifest.ex` — thin wrapper around `Descripex.Manifest.build(ABI.__descripex_modules__())` that writes `api_manifest.json` (or accepts a path arg). Direct copy of `~/_DATA/code/mpp/lib/mix/tasks/mpp.manifest.ex` with module name swap. ~30 lines.
-
-      Add `test/abi/agent_economy_test.exs` — port of `~/_DATA/code/mpp/test/mpp/descripex_test.exs`. Three describe blocks:
-        1. `api() annotations` — for each `@annotated_modules` entry, assert `__api__()` returns non-empty list, every entry has `:hints.description` binary.
-        2. `Discoverable (ABI.describe/0-2)` — assert `ABI.describe()` lists all annotated modules, `ABI.describe/1` and `/2` work for known names.
-        3. `namespace assignment` — assert each module's `Code.fetch_docs/1` metadata has the expected `namespace:`.
-      Plus the cross-check from mpp's "all public functions in annotated modules have hints metadata" test: walk `module_info(:exports)`, filter the standard exports (`module_info`, `__info__`, `__api__`, `__struct__`, `describe`, `__descripex_modules__`, etc.), assert every remaining export is in `__api__()`. **Without this gate, hints rot silently when new `def`s land without `api()` — and silent rot in hieroglyph propagates as silent contract drift through cartouche-generated bindings into every onchain_<protocol> package.** This test is the load-bearing piece of the agent-economy phase.
-
-      Document `mix hieroglyph.manifest` (and the bare `mix descripex.manifest --app hieroglyph` path) as the canonical emission commands in README. The emitted `api_manifest.json` is what cartouche/onchain CI hash for contract-stability checks.
-
-      **Acceptance:** `mix hieroglyph.manifest` writes a valid `api_manifest.json` containing all 25 functions; running the validation test passes; deliberately removing one `api()` annotation in a scratch branch causes the cross-check test to fail with a clear "Module.fname is exported but not declared with api()" message.
-
-      **Bundle:** 1.2.0 — Agent Economy
-      **Docs:** CHANGELOG entry; README "Agent Integration" expanded with manifest emission command + a note that downstream cartouche/onchain CI may diff the manifest across hieroglyph version bumps; CLAUDE.md "Layout" gets `lib/mix/tasks/hieroglyph.manifest.ex` row.
+- [x] ✅ Phase 3: Custom manifest task + hint-rot validation test [D:2/B:5/U:6 → Eff:2.75] — shipped in `1.2.0`
+      Added `lib/mix/tasks/hieroglyph.manifest.ex` (`mix hieroglyph.manifest [path]`, defaults to `api_manifest.json`) and `test/abi/agent_economy_test.exs` (17 tests across `api() annotations`, `Discoverable (ABI.describe/0-2)`, and `namespace assignment` describe blocks, including the load-bearing cross-check that walks `module_info(:exports)` and asserts every non-framework export is declared with `api()`). Documented commands in README "Agent Integration"; CLAUDE.md "Layout" gets the manifest task row. See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
 
 ---
 
