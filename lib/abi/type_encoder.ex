@@ -221,7 +221,7 @@ defmodule ABI.TypeEncoder do
   """
   @spec encode([any()], FunctionSelector.t()) :: binary()
   def encode(data, function_selector) do
-    encode_method_id(function_selector) <>
+    ABI.method_id(function_selector) <>
       do_encode_data(data, function_selector)
   end
 
@@ -248,23 +248,6 @@ defmodule ABI.TypeEncoder do
   @spec encode_raw([any()], [FunctionSelector.argument_type()]) :: binary()
   def encode_raw(data, types) do
     do_encode(types, data, [])
-  end
-
-  @spec encode_method_id(FunctionSelector.t()) :: binary()
-  defp encode_method_id(%FunctionSelector{function: nil}), do: ""
-
-  defp encode_method_id(function_selector) do
-    # Encode selector e.g. "baz(uint32,bool)" and take keccak
-    kec =
-      function_selector
-      |> FunctionSelector.encode()
-      |> Math.kec()
-
-    # Take first four bytes
-    <<init::binary-size(4), _rest::binary>> = kec
-
-    # That's our method id
-    init
   end
 
   @spec do_encode([FunctionSelector.argument_type()], [any()], [binary()]) ::

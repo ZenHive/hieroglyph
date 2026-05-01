@@ -55,6 +55,34 @@ iex> ABI.decode("baz(uint,address)", "000000000000000000000000000000000000000000
 [50, <<1::160>> |> :binary.decode_unsigned]
 ```
 
+### Computing method IDs and decoding selector-prefixed calldata
+
+`ABI.method_id/1` returns the 4-byte function selector (`keccak256(canonical_signature)[0..3]`) — useful for selector-table routing, log-topic matching, or pre-validating calldata without decoding args. Accepts a signature string or a `FunctionSelector` struct.
+
+```elixir
+iex> ABI.method_id("transfer(address,uint256)") |> Base.encode16(case: :lower)
+"a9059cbb"
+
+iex> ABI.method_id("deposit()") |> Base.encode16(case: :lower)
+"d0e30db0"
+```
+
+`ABI.decode_call/3` is the symmetric counterpart to `ABI.encode/2` for selector-prefixed calldata: it strips and verifies the 4-byte prefix, then decodes the payload. `ABI.decode/3` remains payload-only — use `decode_call/3` when the input still has its method-ID prefix (raw transaction `data` from a node), and `decode/3` for return values or selector-routed payloads.
+
+```elixir
+iex> calldata = ABI.encode("transfer(address,uint256)", [<<1::160>>, 100])
+iex> ABI.decode_call("transfer(address,uint256)", calldata)
+{:ok, [<<1::160>>, 100]}
+
+iex> ABI.decode_call("transfer(address,uint256)", <<0xde, 0xad, 0xbe, 0xef>>)
+{:error, :selector_mismatch}
+
+iex> ABI.decode_call("transfer(address,uint256)", <<0xa9, 0x05>>)
+{:error, :calldata_too_short}
+```
+
+Returns `{:ok, decoded}` on selector match, or `{:error, :calldata_too_short | :selector_mismatch | :no_function_name}`. A malformed payload after a valid selector still raises — same contract as `decode/3`.
+
 ### Parsing a JSON ABI file
 
 Full contract ABIs from `solc` / Foundry / Hardhat can be fed straight into `ABI.parse_specification/1` after decoding the JSON. Non-function entries (constructors) are skipped; function, fallback, receive, event, and custom-error entries are all returned as `ABI.FunctionSelector` structs.

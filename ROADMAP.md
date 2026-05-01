@@ -12,7 +12,7 @@
 
 ## 🎯 Current Focus
 
-Upstream bugs #53 and #54 shipped locally on `zenhive` (see [CHANGELOG.md](CHANGELOG.md#unreleased)); still awaiting maintainer response on the upstream issues. Other fork-only polish (padding-helper extraction, `is_dynamic?` → `dynamic?` rename, `mix credo --strict` cleanup) landed alongside. The round-trip property suite landed on `main` and surfaced a real `encode_int` overflow-guard bug on first run, fixed in the same task and queued for an upstream filing. The 2026-04-30 `defi-skills` mining discovery task completed — 7 candidate test/coverage entries staged in "Proposed additions from defi-skills mining" below for triage into existing sections. Remaining fork-only items: the lexer rule-ordering bug and the `dynamic?/1` zero-length crash (both tracked in Bugs below).
+Upstream bugs #53, #54, and #55 shipped locally (see [CHANGELOG.md](CHANGELOG.md#unreleased)); still awaiting maintainer response on the upstream issues. Other fork-only polish (padding-helper extraction, `is_dynamic?` → `dynamic?` rename, `mix credo --strict` cleanup) landed alongside. The round-trip property suite landed on `main` and surfaced #55 (`encode_int` overflow-guard bug) on first run; fixed in the same task and filed upstream 2026-05-01. The pre-existing `dynamic?/1` zero-length-fixed-array crash, `address payable` typedoc gap, and empty-args calldata coverage all landed in the same batch. The 2026-04-30 `defi-skills` mining discovery task completed — 7 candidate test/coverage entries staged in "Proposed additions from defi-skills mining" below for triage into existing sections (one — empty-args calldata — landed in this batch). Remaining fork-only items: the lexer rule-ordering bug (tracked in Bugs below).
 
 ---
 
@@ -25,8 +25,8 @@ Upstream bugs #53 and #54 shipped locally on `zenhive` (see [CHANGELOG.md](CHANG
 | **Lexer `x` terminal shadowed by LETTERS rule** | ⬜ (no issue yet) [D:3/B:4/U:4 → Eff:1.33] 📋 | `src/ethereum_abi_lexer.xrl:13,19` | Discovered while writing tests for #54. `fixed128x18` / `ufixed128x18` tokenize the single `x` as `letters` (LETTERS rule appears before the `x` terminal; leex picks the earlier rule on equal-length matches), so grammar rule `type -> typename digits 'x' digits` never fires. Parser reduces `typename digits` → `juxt_type(fixed, 128)` → `FunctionClauseError` instead of a clean parse-time error. Scope: fix options are (a) reorder lexer rules so `x` outranks LETTERS, making sure identifiers like `foo_x_bar` still tokenize correctly (needs testing — LETTERS is currently the only rule producing `letters` tokens for identifier parts); (b) extend grammar's `identifier_part` to also accept the `x` terminal so identifiers still work; (c) wrap `:ethereum_abi_parser.parse/1` in a `try/rescue` inside `ABI.Parser.parse!/2` and convert the FunctionClauseError to an ArgumentError with an upstream-#54 link. File an upstream issue before picking an approach. **Docs:** CHANGELOG entry; if the fix ends up surfacing the same rejection as #54, may update the README lexer caveat. |
 | **`encode_bytes/1` accidentally public** | ⬜ (no issue) | `lib/abi/type_encoder.ex:353` | No `@doc`, no `@spec`, no internal callers outside module. Changing `def` → `defp` is technically a breaking API change for downstream consumers we can't see — Codex review flagged this. Skip the issue; fold into a future PR or leave alone. **Docs:** CHANGELOG entry (breaking, if changed). |
 | **`decode_event/4` mixed raise + tagged-tuple contract** | ⬜ (hold) | `lib/abi/event.ex:93-148` | Returns `{:error, _}` for topic/length mismatches but calls `decode_raw` internally, which raises on malformed data. Scope of change = arguable 2.0 breaking API — discuss before PR, not yet filed upstream. **Docs:** CHANGELOG entry (breaking); possibly README note on the unified return contract. |
-| **`dynamic?/1` crashes on zero-length fixed array** | ⬜ (no issue yet) [D:1/B:2/U:2 → Eff:2.0] 🚀 | `lib/abi/function_selector.ex:474` | `{:array, _, 0}` matches no clause (guard is `len > 0`) → FunctionClauseError. Pre-existing; grammar line 80 of `ethereum_abi_parser.yrl` allows `N >= 0` (so `T[0]` parses). The event-indexing path is safe after the #53 fix (reference types short-circuit before `dynamic?/1` is called), but encoder/decoder paths still crash on a parseable-but-useless type. One-line fix: add `def dynamic?({:array, _, 0}), do: false` (zero-length fixed array is empty → static by any definition). **Docs:** CHANGELOG entry. |
-| **`encode_int/2` byte-vs-bit overflow guard rejected ALL `int<N>`** | ✅ `main` (no upstream issue yet) | `lib/abi/type_encoder.ex:382-401` | Surfaced by the round-trip property suite on first run. The overflow guard compared `byte_size(significant_bytes)` against `desired_size_bytes - 1`, which is `0` for `int8` — so even encoding `0` raised. Replaced with a numeric range check against `2^(N-1)` performed up-front, so the encoder accepts the full signed range `-2^(N-1)..2^(N-1)-1` for every `int<N>`. The pre-existing `"int overflow raises data overflow"` test passed only because the encoder was broken for any value; tightened to assert specific in-range values encode AND specific boundary cases (`128`, `-129`) raise. **TODO:** file upstream against `exthereum/abi`. See [CHANGELOG.md](CHANGELOG.md#unreleased). |
+| **`dynamic?/1` crashes on zero-length fixed array** | ✅ `main` (no upstream issue yet) | `lib/abi/function_selector.ex:484` | One-line fix shipped: `def dynamic?({:array, _type, 0}), do: false`. Encoder/decoder paths already handle zero-length arrays correctly — verified by extending `roundtrip_property_test.exs`'s fixed-array length domain to `0..3`. Pre-existing in upstream `exthereum/abi`; not yet filed (consider folding with the lexer-rule-ordering fix into a single PR). See [CHANGELOG.md](CHANGELOG.md#unreleased). |
+| **`encode_int/2` byte-vs-bit overflow guard rejected ALL `int<N>`** | ✅ `main` [upstream #55](https://github.com/exthereum/abi/issues/55) | `lib/abi/type_encoder.ex:382-401` | Surfaced by the round-trip property suite on first run. The overflow guard compared `byte_size(significant_bytes)` against `desired_size_bytes - 1`, which is `0` for `int8` — so even encoding `0` raised. Replaced with a numeric range check against `2^(N-1)` performed up-front, so the encoder accepts the full signed range `-2^(N-1)..2^(N-1)-1` for every `int<N>`. The pre-existing `"int overflow raises data overflow"` test passed only because the encoder was broken for any value; tightened to assert specific in-range values encode AND specific boundary cases (`128`, `-129`) raise. Filed upstream 2026-05-01 — awaiting maintainer response. See [CHANGELOG.md](CHANGELOG.md#unreleased). |
 
 ---
 
@@ -60,9 +60,8 @@ Upstream bugs #53 and #54 shipped locally on `zenhive` (see [CHANGELOG.md](CHANG
 - [x] ✅ Rename `ABI.FunctionSelector.is_dynamic?/1` → `dynamic?/1` [D:2/B:3/U:2 → Eff:1.25]
       Renamed all 9 clause heads, the `@spec`, and the 2 recursive self-calls, plus the 3 private call-sites in `ABI.TypeDecoder` / `ABI.TypeEncoder`. No deprecation shim — `@doc false` since 2017, zero in-repo external callers, and a `defdelegate` shim would recreate the exact `PredicateFunctionNames` violation we were eliminating. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
-- [ ] `address payable` vs `address` doc note [D:1/B:2/U:2 → Eff:2.0] 🚀
-      Solidity's ABI JSON distinguishes `address` from `address payable`, but on-the-wire encoding is identical, so `FunctionSelector.parse_specification_type_type/1` collapses both to `:address` silently. Not mentioned in the public `@type type` or module docs. Add a short note to `ABI.FunctionSelector`'s `@moduledoc` (and/or the `@type type` docstring) so consumers don't expect a separate atom. Upstream-friendly.
-      **Docs:** CHANGELOG entry (docs-only).
+- [x] ✅ `address payable` vs `address` doc note [D:1/B:2/U:2 → Eff:2.0]
+      Added a `@typedoc` to `ABI.FunctionSelector.@type type/0` clarifying that `address payable` collapses to `:address` (Solidity ABI JSON only emits `"address"`; on-the-wire encoding identical; payability is a `state_mutability` property, not a type variant). See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 ### Hardening
 
@@ -137,11 +136,8 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       The Curve `uint256[3]`, Uniswap tuple, Balancer multi-tuple, and EigenLayer `tuple[]` cases double as proof that the canonical-signature serialisation in `function_selector.ex` matches the spec.
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
-- [ ] Empty-args calldata path coverage [D:1/B:2/U:3 → Eff:2.5] 🎯
-      `weth.deposit()` (selector `0xd0e30db0`) and `rocket_pool.deposit()` produce calldata that's literally just the 4-byte selector — zero ABI-encoded args. Verify `ABI.decode(<<>>, %FunctionSelector{types: []})` returns `[]` cleanly, and `ABI.encode(%FunctionSelector{function: "deposit", types: []}, [])` produces only the selector. Today `roundtrip_property_test.exs` never tests empty arg lists — every generator produces at least one value. One-test addition; pre-existing pathway, just untested.
-
-      Sample: `defi-skills build --action weth_wrap --args '{"amount":"1"}'` → `data = "0xd0e30db0"` (4 bytes total, no padding).
-      **Docs:** CHANGELOG entry under `## [Unreleased]`.
+- [x] ✅ Empty-args calldata path coverage [D:1/B:2/U:3 → Eff:2.5]
+      Tests added in `test/abi_test.exs` covering the `f()` shape (`weth.deposit()` / `rocket_pool.deposit()`): `ABI.encode("deposit()", []) == <<0xD0, 0xE3, 0x0D, 0xB0>>`, `ABI.decode("deposit()", <<>>) == []`, plus the `function: nil`/`types: []` empty-bytes shape. See [CHANGELOG.md](CHANGELOG.md#unreleased).
 
 - [ ] Deep struct nesting (depth ≥ 4) round-trip [D:2/B:4/U:4 → Eff:2.0] 🚀
       `roundtrip_property_test.exs` `composite/2` recursion is capped at depth 3 (line ~252 of the file). Pendle `swapExactTokenForPt` exercises depth 5: `args.input` (struct) contains `swapData` (struct) which contains `extCalldata` (bytes); the `limit` arg (struct) contains `normalFills` and `flashFills` (each `tuple[]`). Bumping `composite` depth to 5 is a one-line change; the failures (if any) it surfaces are real.
@@ -187,6 +183,9 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
 
 ## 🚀 Feature Gaps vs. Peer Libraries
 
+- [x] ✅ `ABI.decode_call/3` + `ABI.method_id/1` [D:2/B:5/U:6 → Eff:2.75]
+      Symmetric counterpart to `ABI.encode/2` for selector-prefixed calldata: `decode_call` strips and verifies the 4-byte selector, then routes the payload through the existing `decode/3` machinery; returns `{:ok, _}` or `{:error, :calldata_too_short | :selector_mismatch | :no_function_name}`. `decode/3` semantics unchanged (still payload-only, matches `eth-abi`/`ethers`/`viem`/`alloy`). `method_id/1` exposes the selector-derivation primitive (`keccak256(canonical_signature)[0..3]`). See [CHANGELOG.md](CHANGELOG.md#unreleased).
+
 - [ ] `ABI.encode_packed/2` support [D:7/B:8/U:6 → Eff:1.0] 📋
       Non-standard packed encoding — used for Merkle airdrop leaves and `keccak256(abi.encodePacked(...))` signature schemes. (Note: EIP-712 itself uses structured hashing, not packed — avoid that framing in any upstream pitch.) Present in `eth-abi`, `ethers`/`viem`, `alloy`. Biggest ecosystem gap. Hold for round-two upstream scope-check after #53/#54 responses land.
       **Docs:** CHANGELOG entry; add to README (mention packed encoding in Usage, note the difference from standard ABI encoding); update Support section if a checkbox category is added.
@@ -220,6 +219,7 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
 | Credo strict style cleanup | ✅ Shipped locally on `zenhive`, ready for upstream PR |
 | `is_dynamic?` → `dynamic?` rename | ✅ Shipped locally on `zenhive`, ready for upstream PR (optional deprecation shim can be added during review) |
 | `decode_event/4` error contract | ⚠️ Arguable breaking change — discuss first |
+| `decode_call/3` + `method_id/1` | ✅ Pure addition — file as upstream feature PR |
 | `encode_packed` | ⚠️ Feature — issue first |
 | `decode_error/2` | ⚠️ Feature — issue first |
 | `fixed`/`ufixed` / `function` implementations | ⚠️ Feature — confirm interest first |

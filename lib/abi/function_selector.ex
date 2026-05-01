@@ -6,6 +6,16 @@ defmodule ABI.FunctionSelector do
 
   alias ABI.Parser
 
+  @typedoc """
+  A Solidity ABI type.
+
+  Note that `address payable` is **not** a distinct variant. Solidity ABI
+  JSON only emits `"address"` for both `address` and `address payable`,
+  and the on-the-wire encoding is identical (20-byte left-padded). Payability
+  is a property of function state mutability (`:payable` in
+  `t:state_mutability/0`), not the address type itself, so both forms
+  collapse to `:address` here.
+  """
   @type type ::
           {:uint, integer()}
           | :bool
@@ -471,6 +481,7 @@ defmodule ABI.FunctionSelector do
   def dynamic?(:bytes), do: true
   def dynamic?(:string), do: true
   def dynamic?({:array, _type}), do: true
+  def dynamic?({:array, _type, 0}), do: false
   def dynamic?({:array, type, len}) when len > 0, do: dynamic?(type)
 
   def dynamic?({:tuple, types}), do: Enum.any?(types, fn arg_type -> dynamic?(arg_type.type) end)

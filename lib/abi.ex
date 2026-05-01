@@ -7,6 +7,7 @@ defmodule ABI do
 
   alias ABI.Event
   alias ABI.FunctionSelector
+  alias ABI.Math
   alias ABI.Parser
   alias ABI.TypeDecoder
   alias ABI.TypeEncoder
@@ -71,6 +72,43 @@ defmodule ABI do
   end
 
   @doc """
+  Returns the 4-byte function selector (method ID) for a function signature.
+
+  The selector is `keccak256(canonical_signature)` truncated to its first 4
+  bytes. Returns `<<>>` for selectors with no `function` name (anonymous /
+  raw-tuple selectors used for return-value decoding).
+
+  ## Examples
+
+      iex> ABI.method_id("transfer(address,uint256)") |> Base.encode16(case: :lower)
+      "a9059cbb"
+
+      iex> ABI.method_id("deposit()") |> Base.encode16(case: :lower)
+      "d0e30db0"
+
+      iex> ABI.method_id(%ABI.FunctionSelector{function: "deposit", types: []}) |> Base.encode16(case: :lower)
+      "d0e30db0"
+
+      iex> ABI.method_id(%ABI.FunctionSelector{function: nil, types: [%{type: {:uint, 256}}]})
+      ""
+  """
+  @spec method_id(binary() | FunctionSelector.t()) :: binary()
+  def method_id(signature) when is_binary(signature) do
+    method_id(Parser.parse!(signature))
+  end
+
+  def method_id(%FunctionSelector{function: nil}), do: <<>>
+
+  def method_id(%FunctionSelector{} = function_selector) do
+    <<id::binary-size(4), _::binary>> =
+      function_selector
+      |> FunctionSelector.encode()
+      |> Math.kec()
+
+    id
+  end
+
+  @doc """
   Decodes the given data based on the function or tuple
   signature.
 
@@ -121,6 +159,77 @@ defmodule ABI do
       Tuple.to_list(res)
     else
       res
+    end
+  end
+
+  @doc """
+  Decodes selector-prefixed calldata (4-byte method ID followed by ABI-encoded
+  args) and verifies the prefix matches the expected selector.
+
+  Symmetric counterpart to `encode/2`, which produces selector-prefixed
+  output. Use `decode/2` for payload-only data (return values, or calldata
+  that has already been routed by selector).
+
+  Returns:
+
+  * `{:ok, decoded}` — selector matched; `decoded` is the same shape `decode/3` returns
+  * `{:error, :calldata_too_short}` — fewer than 4 bytes provided
+  * `{:error, :selector_mismatch}` — first 4 bytes don't match the expected selector
+  * `{:error, :no_function_name}` — the selector has `function: nil`, so there's no
+    selector to verify against; use `decode/3` with the payload directly
+
+  > #### Note {: .info}
+  >
+  > Only the *selector* check is wrapped in `{:error, _}`. When the selector
+  > matches but the payload is malformed (truncated or wrongly-typed bytes),
+  > the underlying `decode/3` still raises — same contract as calling
+  > `decode/3` directly.
+
+  ## Examples
+
+      iex> calldata = ABI.encode("transfer(address,uint256)", [<<1::160>>, 100])
+      iex> ABI.decode_call("transfer(address,uint256)", calldata)
+      {:ok, [<<1::160>>, 100]}
+
+      iex> ABI.decode_call("deposit()", <<0xd0, 0xe3, 0x0d, 0xb0>>)
+      {:ok, []}
+
+      iex> ABI.decode_call("transfer(address,uint256)", <<0xde, 0xad, 0xbe, 0xef>>)
+      {:error, :selector_mismatch}
+
+      iex> ABI.decode_call("transfer(address,uint256)", <<0xa9, 0x05>>)
+      {:error, :calldata_too_short}
+
+      iex> ABI.decode_call(%ABI.FunctionSelector{function: nil, types: []}, <<0::32>>)
+      {:error, :no_function_name}
+  """
+  @typep decode_call_error ::
+           :calldata_too_short | :selector_mismatch | :no_function_name
+
+  @spec decode_call(binary() | FunctionSelector.t(), binary(), keyword()) ::
+          {:ok, [any()] | map()} | {:error, decode_call_error()}
+  def decode_call(signature_or_selector, calldata, opts \\ [])
+
+  def decode_call(signature, calldata, opts) when is_binary(signature) do
+    decode_call(FunctionSelector.decode(signature), calldata, opts)
+  end
+
+  def decode_call(%FunctionSelector{function: nil}, _calldata, _opts) do
+    {:error, :no_function_name}
+  end
+
+  def decode_call(%FunctionSelector{}, calldata, _opts) when byte_size(calldata) < 4 do
+    {:error, :calldata_too_short}
+  end
+
+  def decode_call(%FunctionSelector{} = function_selector, calldata, opts) do
+    expected = method_id(function_selector)
+    <<actual::binary-size(4), payload::binary>> = calldata
+
+    if actual == expected do
+      {:ok, decode(function_selector, payload, opts)}
+    else
+      {:error, :selector_mismatch}
     end
   end
 

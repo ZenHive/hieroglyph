@@ -61,9 +61,10 @@ defmodule ABI.RoundtripPropertyTest do
 
   # ── Recursive type generator ────────────────────────────────────────────
   #
-  # `{:array, T, 0}` deliberately excluded — `FunctionSelector.dynamic?/1`
-  # crashes on zero-length fixed arrays (tracked in ROADMAP.md as a pending
-  # bug). Fixed-array count domain is 1..3 here.
+  # Fixed-array count domain is 0..3. `{:array, T, 0}` is now handled
+  # statically by `FunctionSelector.dynamic?/1`; if a downstream encoder or
+  # decoder path crashes on an empty fixed array, that's a real bug — surface
+  # it here, don't suppress it.
 
   @leaf_types [
     :bool,
@@ -88,7 +89,7 @@ defmodule ABI.RoundtripPropertyTest do
       {1, StreamData.map(type_gen(depth - 1), &{:array, &1})},
       {1,
        StreamData.bind(type_gen(depth - 1), fn inner ->
-         StreamData.map(StreamData.integer(1..3), &{:array, inner, &1})
+         StreamData.map(StreamData.integer(0..3), &{:array, inner, &1})
        end)},
       {1,
        (depth - 1)
