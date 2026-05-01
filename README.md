@@ -138,6 +138,33 @@ iex> ABI.encode(selector, [%{recipient: <<1::160>>, amount: 1_000}])
 true
 ```
 
+## Agent Integration
+
+`hieroglyph` is annotated with [`descripex`](https://hex.pm/packages/descripex) so its public surface is discoverable at runtime and emittable as a static manifest. The intended consumer is downstream codegen / agent tooling — `cartouche`-generated contract bindings, `onchain*` packages, and any catalog that needs to verify or list ABI primitives — not human readers (use the regular hexdocs for that).
+
+Progressive discovery via `ABI.describe/0..2`:
+
+```elixir
+ABI.describe()                 # Level 1: all annotated modules with namespaces
+ABI.describe(:abi)             # Level 2: function list for the top-level ABI module
+ABI.describe(:abi, :encode)    # Level 3: full hints — params, returns, errors, spec
+```
+
+Direct module introspection:
+
+```elixir
+ABI.__api__()                  # list of %{name, arity, hints, spec, ...} entries
+ABI.__api__(:encode)           # one entry by name
+```
+
+Static manifest emission (JSON-serializable representation of every annotated function — params, returns, errors, specs, descriptions):
+
+```bash
+mix descripex.manifest --app hieroglyph --pretty --output api_manifest.json
+```
+
+The manifest is suitable for downstream CI to diff across `hieroglyph` version bumps as a contract-stability check — silent contract drift in this library propagates as compile errors through cartouche-generated bindings into every onchain consumer. A dedicated `mix hieroglyph.manifest` task ships in 1.2.0 alongside this section (see CHANGELOG).
+
 ## Support
 
 Currently supports:

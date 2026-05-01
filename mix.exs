@@ -4,7 +4,7 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.1.0",
+      version: "1.2.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       description:
@@ -67,6 +67,7 @@ defmodule ABI.Mixfile do
     [
       {:jason, "~> 1.4"},
       {:ex_sha3, "~> 0.1.4"},
+      {:descripex, "~> 0.6"},
       {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.4", only: [:dev, :test], runtime: false},

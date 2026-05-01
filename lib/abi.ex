@@ -3,7 +3,26 @@ defmodule ABI do
   Documentation for ABI, the function interface language for Solidity.
   Generally, the ABI describes how to take binary Ethereum and transform
   it to or from types that Solidity understands.
+
+  ## Agent Discovery
+
+  Use `ABI.describe/0..2` for progressive API discovery:
+
+      ABI.describe()                    # Level 1: all annotated modules
+      ABI.describe(:abi)                # Level 2: functions in this module
+      ABI.describe(:abi, :encode)       # Level 3: full contract for encode/2
+
+  A static `api_manifest.json` covering every public function is emitted by
+  `mix descripex.manifest --app hieroglyph` (a dedicated `mix
+  hieroglyph.manifest` wrapper ships in 1.2.0 alongside Phase 3 of the agent
+  economy work — see CHANGELOG). Downstream consumers may diff that manifest
+  across hieroglyph version bumps as a contract-stability check.
   """
+
+  use Descripex, namespace: "/abi"
+
+  use Descripex.Discoverable,
+    modules: [ABI]
 
   alias ABI.Event
   alias ABI.FunctionSelector
@@ -11,6 +30,25 @@ defmodule ABI do
   alias ABI.Parser
   alias ABI.TypeDecoder
   alias ABI.TypeEncoder
+
+  api(:encode, "Encodes the given data into the function signature or tuple signature.",
+    params: [
+      function_signature: [
+        kind: :value,
+        description:
+          "Either a raw signature string (for example, transfer(address,uint256)) or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      data: [
+        kind: :value,
+        description: "List of values to encode, in argument order. Tuples or maps are accepted for struct-typed args."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description:
+        "ABI-encoded calldata. Selector-prefixed when the signature has a function name; raw payload otherwise (for example, tuple-only signatures used to encode return values)."
+    }
+  )
 
   @doc """
   Encodes the given data into the function signature or tuple signature.
@@ -71,6 +109,22 @@ defmodule ABI do
     TypeEncoder.encode(data, function_selector)
   end
 
+  api(:method_id, "Returns the 4-byte function selector (method ID) for a function signature.",
+    params: [
+      signature: [
+        kind: :value,
+        description:
+          "Either a raw signature string (for example, transfer(address,uint256)) or a pre-parsed ABI.FunctionSelector struct."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description:
+        "First 4 bytes of keccak256(canonical_signature). Returns the empty binary for selectors with function: nil (raw-tuple selectors used for return-value decoding)."
+    },
+    composes_with: [:encode, :decode_call]
+  )
+
   @doc """
   Returns the 4-byte function selector (method ID) for a function signature.
 
@@ -107,6 +161,28 @@ defmodule ABI do
 
     id
   end
+
+  api(:decode, "Decodes the given data based on the function or tuple signature.",
+    params: [
+      function_signature: [
+        kind: :value,
+        description: "Either a raw signature string or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      data: [
+        kind: :value,
+        description:
+          "ABI-encoded payload bytes (no 4-byte selector prefix). Use decode_call/3 for selector-prefixed calldata."
+      ],
+      opts: [
+        kind: :value,
+        description: "Keyword options. decode_structs: true returns a map keyed by parameter names instead of a list."
+      ]
+    ],
+    returns: %{
+      type: :list,
+      description: "Decoded values, in argument order. Returns a map when decode_structs: true is set."
+    }
+  )
 
   @doc """
   Decodes the given data based on the function or tuple
@@ -161,6 +237,38 @@ defmodule ABI do
       res
     end
   end
+
+  api(
+    :decode_call,
+    "Decodes selector-prefixed calldata (4-byte method ID + ABI-encoded args) and verifies the selector matches.",
+    params: [
+      signature_or_selector: [
+        kind: :value,
+        description:
+          "Either a raw signature string or a pre-parsed ABI.FunctionSelector struct. The first 4 bytes of calldata are checked against this selector."
+      ],
+      calldata: [
+        kind: :value,
+        description:
+          "Full selector-prefixed calldata bytes. Must be at least 4 bytes; first 4 bytes are the method ID and the remainder is the ABI-encoded payload."
+      ],
+      opts: [
+        kind: :value,
+        description: "Keyword options forwarded to decode/3."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "Tagged tuple. Selector match returns {:ok, decoded} where decoded matches decode/3's shape; selector errors return {:error, reason}. A malformed payload still raises (same contract as decode/3)."
+    },
+    errors: [
+      calldata_too_short: "Fewer than 4 bytes provided.",
+      selector_mismatch: "First 4 bytes do not match the expected selector.",
+      no_function_name: "Selector has function: nil — there is no selector to verify against; use decode/3 directly."
+    ],
+    composes_with: [:decode, :method_id]
+  )
 
   @doc """
   Decodes selector-prefixed calldata (4-byte method ID followed by ABI-encoded
@@ -232,6 +340,35 @@ defmodule ABI do
       {:error, :selector_mismatch}
     end
   end
+
+  api(:decode_event, "Decodes an event from raw log data and indexed topics.",
+    params: [
+      function_signature: [
+        kind: :value,
+        description: "Either a raw event signature string or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      data: [
+        kind: :value,
+        description: "Non-indexed event data — the data field of the Ethereum log."
+      ],
+      topics: [
+        kind: :value,
+        description:
+          "List of 32-byte topic hashes (the topics field of the log). topics[0] is verified against the event signature unless check_event_signature: false is passed."
+      ],
+      opts: [
+        kind: :value,
+        description:
+          "Keyword options. check_event_signature: false skips the topics[0] verification (useful when topics[0] has already been stripped)."
+      ]
+    ],
+    returns: %{
+      type: :tuple,
+      description:
+        "Tagged tuple. {:ok, event_name, args_map} on success; {:error, reason} on signature or topic-length mismatch. Indexed reference-type params decode as {:indexed_hash, <<32 bytes>>} per the Solidity spec."
+    },
+    composes_with: [:event_signature]
+  )
 
   @doc """
   Decodes an event, including indexed and non-indexed data.
@@ -309,6 +446,20 @@ defmodule ABI do
     Event.decode_event(data, topics, function_selector, opts)
   end
 
+  api(:event_signature, "Returns the 32-byte topic hash for an event signature.",
+    params: [
+      function_signature: [
+        kind: :value,
+        description: "Either a raw event signature string or a pre-parsed ABI.FunctionSelector struct."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description: "32-byte keccak256(canonical_event_signature). On Ethereum logs this is the topics[0] hash."
+    },
+    composes_with: [:decode_event]
+  )
+
   @doc """
   Returns the signature for an event.
 
@@ -327,10 +478,29 @@ defmodule ABI do
     Event.event_signature(function_selector)
   end
 
+  api(
+    :parse_specification,
+    "Parses an ABI specification document into a list of ABI.FunctionSelector structs.",
+    params: [
+      doc: [
+        kind: :value,
+        description:
+          "ABI specification as a list of maps — typically produced by JSON-decoding a contract's .abi.json file. Every entry is parsed into a FunctionSelector, including non-function entries (constructor, fallback, receive, error, event) — distinguish via the :function_type field."
+      ]
+    ],
+    returns: %{
+      type: :list,
+      description: "List of ABI.FunctionSelector structs — one per entry in the input doc, regardless of :function_type."
+    }
+  )
+
   @doc """
   Parses the given ABI specification document into an array of `ABI.FunctionSelector`s.
 
-  Non-function entries (e.g. constructors) in the ABI specification are skipped. Fallback function entries are accepted.
+  Every entry in the document is parsed — including constructor, fallback,
+  receive, error, and event entries — and returned with its `function_type`
+  field set accordingly. Filter by that field if you only want plain
+  function entries.
 
   This function can be used in combination with a JSON parser, e.g. [`Jason`](https://hex.pm/packages/jason), to parse ABI specification JSON files.
 
