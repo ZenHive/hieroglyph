@@ -381,6 +381,13 @@ defmodule ABI.TypeEncoder do
 
   defp encode_int(int, desired_size_bits) when rem(desired_size_bits, 8) == 0 and is_integer(int) do
     desired_size_bytes = ceil(desired_size_bits / 8)
+    max = Bitwise.bsl(1, desired_size_bits - 1)
+
+    if int >= max or int < -max do
+      raise(
+        "Data overflow encoding int, data `#{int}` cannot fit in #{desired_size_bits}-bit signed range (-#{max}..#{max - 1})"
+      )
+    end
 
     sign_byte = if(int < 0, do: <<0xFF>>, else: <<0x00>>)
 
@@ -390,12 +397,8 @@ defmodule ABI.TypeEncoder do
       else
         # two's complement encoding: 2**(integer_bit_size) - abs(integer)
         actual_bit_size = (-1 * int) |> :binary.encode_unsigned() |> bit_size()
-        maybe_encode_unsigned(2 ** actual_bit_size + int)
+        maybe_encode_unsigned(Bitwise.bsl(1, actual_bit_size) + int)
       end
-
-    if byte_size(significant_bytes) > desired_size_bytes - 1 do
-      raise("Data overflow encoding int, data `#{int}` cannot fit in #{(desired_size_bytes - 1) * 8} bits")
-    end
 
     Math.pad(significant_bytes, desired_size_bytes, :left, fill_byte: sign_byte)
   end

@@ -152,11 +152,21 @@ defmodule ABI.TypeEncoderTest do
       end
     end
 
-    test "int overflow raises data overflow" do
+    test "int overflow raises at the signed-range boundary" do
       selector = %FunctionSelector{function: nil, types: [%{type: {:int, 8}}]}
 
-      assert_raise RuntimeError, ~r/Data overflow encoding int/, fn ->
-        TypeEncoder.encode([-200], selector)
+      # int8 range is -128..127; the boundary cases must raise.
+      for value <- [128, -129, -200, 1_000] do
+        assert_raise RuntimeError, ~r/Data overflow encoding int/, fn ->
+          TypeEncoder.encode([value], selector)
+        end
+      end
+
+      # In-range values must NOT raise (regression guard against the
+      # byte-vs-bit overflow check that previously rejected ALL int8 input,
+      # including 0).
+      for value <- [-128, -1, 0, 1, 127] do
+        assert is_binary(TypeEncoder.encode([value], selector))
       end
     end
 

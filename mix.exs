@@ -78,7 +78,8 @@ defmodule ABI.Mixfile do
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.10", only: :dev},
       {:ex_dna, "~> 1.3", only: [:dev, :test], runtime: false},
-      {:ex_ast, "~> 0.5", only: [:dev, :test], runtime: false}
+      {:ex_ast, "~> 0.5", only: [:dev, :test], runtime: false},
+      {:stream_data, "~> 1.1", only: :test}
     ]
   end
 end
