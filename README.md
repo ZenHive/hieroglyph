@@ -7,7 +7,7 @@ The [Application Binary Interface](https://docs.soliditylang.org/en/latest/abi-s
 
 ## About this package
 
-`hieroglyph` is a maintained fork of [exthereum/abi](https://github.com/exthereum/abi) that ships bugfixes and Elixir 1.19+ compatibility ahead of upstream. **The module namespace is unchanged:** consumers still call `ABI.encode/2`, `ABI.decode/2`, `ABI.parse_specification/1`, etc. Only the hex package name differs. See [exthereum/abi#53](https://github.com/exthereum/abi/issues/53) and [#54](https://github.com/exthereum/abi/issues/54) for the fork-motivating bug reports filed upstream.
+`hieroglyph` is a maintained fork of [exthereum/abi](https://github.com/exthereum/abi) that ships bugfixes and Elixir 1.19+ compatibility ahead of upstream. **The module namespace is unchanged:** consumers still call `ABI.encode/2`, `ABI.decode/2`, `ABI.parse_specification/1`, etc. Only the hex package name differs. See [exthereum/abi#53](https://github.com/exthereum/abi/issues/53), [#54](https://github.com/exthereum/abi/issues/54), and [#55](https://github.com/exthereum/abi/issues/55) for the fork-motivating bug reports filed upstream.
 
 ## Installation
 
@@ -157,6 +157,8 @@ Currently supports:
   * [X] `string`
   * [X] `<type>[]`
   * [X] `(T1,T2,...,Tn)`
+
+Round-trip safety — `decode(encode(x)) == x` — is property-tested with `stream_data` across every supported type above, including recursively nested tuples and fixed/dynamic arrays.
 
 Types marked `[ ]` above are recognized by the ABI grammar but not implemented by this library. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains them (including nested in arrays or tuples), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking. The explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms currently raise a `FunctionClauseError` earlier due to a separate lexer bug — tracked in ROADMAP.
 

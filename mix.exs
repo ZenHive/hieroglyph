@@ -4,7 +4,7 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.0.0",
+      version: "1.1.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       description:
