@@ -22,15 +22,18 @@
 
 Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) also shipped in 1.2.0.
 
-**Next direction:** no live standalone open work in the table. `fixed<M>x<N>` / `ufixed<M>x<N>` stay deferred (Solidity language limitation — see CHANGELOG 1.3.0 and README "Support"). Public-surface feature parity with `eth-abi` / `ethers` / `viem` / `alloy` is now closed. Maintenance posture from here: respond to upstream maintainer feedback on #53/#54/#55 + the queued combined-bug filings (lexer `x` sub-bug, `:string` NUL truncation, `decode_structs: true` DoS hardening from 1.4.0), and watch for new gaps surfaced by downstream consumer activity (cartouche / onchain) or new EIPs.
+**Next direction:** encode-side symmetry pass — peer-lib parity audit (2026-05-01) surfaced three encode-side gaps mirroring already-shipped decode APIs (`encode_event_topics/2`, `encode_call/3`, `encode_error/3`), plus two standalone polish items (`get_abi_item/3` lookup helper, `strict: true` decoder option). `fixed<M>x<N>` / `ufixed<M>x<N>` stay deferred (Solidity language limitation — see CHANGELOG 1.3.0 and README "Support"). Maintenance posture unchanged: respond to upstream maintainer feedback on #53/#54/#55 + the queued combined-bug filings (lexer `x` sub-bug, `:string` NUL truncation, `decode_structs: true` DoS hardening from 1.4.0).
 
-**Shipping units:** all release-bundles closed. No remaining open tasks.
+**Shipping units:** Encode-Side Symmetry Pass (3 members — see 📦 Bundles). Two standalone items (`get_abi_item/3`, strict-decode mode) ship independently.
 
 ---
 
 ## 📦 Bundles
 
 Tasks grouped by shipping unit. A bundle ships as one PR / one release; member tasks share scope, files, or sourcing. Standalone tasks (no `**Bundle:**` annotation on the task itself) ship independently. Each member task keeps its own D/B/U score — the per-bundle "Avg Eff" below is a planning convenience, not a substitute.
+
+### Bundle: Encode-Side Symmetry Pass — 3 members, Avg Eff 2.25 🎯
+Closes the visible encode-side asymmetry against three already-shipped decode APIs: `encode_call/3` (counterpart to `decode_call/3`, selector-prefixed calldata in one call), `encode_error/3` (counterpart to `decode_error/2`, builds Solidity 0.8.4+ revert blobs for test harnesses), `encode_event_topics/2` (counterpart to `decode_event/4`, builds `eth_getLogs` topic filters with indexed-arg hashing). Members share the wrapper-over-existing-machinery shape — `method_id/1` plus `encode/2` plus the `reference_type?/1` predicate already shipped in 1.0.0 for indexed-event handling. Ship as one minor bump.
 
 ### Bundle: Public Surface Pass ✅ shipped 2026-05-01
 Four members in a single release: `decode_event/4` error contract narrowed (bugfix-honoring-typespec, atom-tagged closed error set), `encode_bytes/1` flipped to `defp` (hygiene), `ABI.decode_error/2` (new — Solidity 0.8.4+ custom errors), `ABI.encode_packed/2` (new — non-standard packed encoding). Combined with the previously-Unreleased Property Suite Expansion + DeFi Real-World Fixtures bundles into the 1.2.0 release. See [CHANGELOG.md](CHANGELOG.md#120---2026-05-01).
@@ -238,6 +241,29 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
 - [x] ✅ Implement `function` type encode/decode [D:2/B:5/U:5 → Eff:2.5] — shipped 1.3.0
       24-byte address+selector type. Lifted upstream #54's parse-time rejection for `:function` (`fixed`/`ufixed` stay deferred per the Solidity-language reason — see README "Why `fixed<M>x<N>` / `ufixed<M>x<N>` are deferred"). One encoder clause, one decoder clause, one packed-encoder clause; reused `encode_bytes/1` (right-pad to 32) and `decode_bytes/3` (unpad via `Math.unpad`). `function[]`, `function[N]`, and `(uint256, function)` work via existing recursion. See [CHANGELOG.md](CHANGELOG.md#130---2026-05-01).
 
+- [ ] `ABI.encode_call/3` (selector-prefixed calldata) [D:2/B:5/U:6 → Eff:2.75] 🎯
+      Symmetric counterpart to `decode_call/3`. One-shot `method_id/1 ++ encode/2`: takes a signature string or `%FunctionSelector{}` plus the args list, returns the 4-byte-prefixed calldata blob. Mirrors `viem.encodeFunctionData` / `ethers.Interface.encodeFunctionData` / `eth_abi.encode_abi_with_selector`. `api()` declaration with `composes_with:` link to `decode_call/3`. Three clauses: signature-binary, `%FunctionSelector{function: nil}` (raise `ArgumentError`), `%FunctionSelector{}`.
+      **Bundle:** Encode-Side Symmetry Pass
+      **Docs:** CHANGELOG entry under `## [Unreleased]`; README "Usage" section gets the encode-side example matching the existing `decode_call/3` example.
+
+- [ ] `ABI.encode_error/3` (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25] 🎯
+      Symmetric counterpart to `decode_error/2` (1.2.0 Public Surface Pass). Given an error signature + args, return `<<selector::4-bytes, abi_encoded_args::binary>>`. Test-harness, RPC-mock, and contract-fuzzer use cases. Mirrors `viem.encodeErrorResult`. `api()` declaration with `composes_with:` link to `decode_error/2`. Same three-clause shape as `encode_call/3`.
+      **Bundle:** Encode-Side Symmetry Pass
+      **Docs:** CHANGELOG entry under `## [Unreleased]`.
+
+- [ ] `ABI.encode_event_topics/2` (event log topic filter builder) [D:4/B:7/U:7 → Eff:1.75] 🚀
+      Symmetric counterpart to `decode_event/4`. Given a parsed event signature + indexed-arg values (or `:any` wildcards for unfiltered slots), return `[topic0, topic1?, topic2?, topic3?]` for `eth_getLogs`. Indexed value types pad to 32; indexed reference types (arrays — fixed or dynamic — plus tuples, `string`, `bytes`) hash via the existing `reference_type?/1` predicate from the 1.0.0 #53 fix in `lib/abi/event.ex`. Anonymous events skip `topic0`. Mirrors `viem.encodeEventTopics` / `ethers.Interface.encodeFilterTopics`. `api()` declaration with `composes_with:` link to `decode_event/4` and `event_signature/1`.
+      **Bundle:** Encode-Side Symmetry Pass
+      **Docs:** CHANGELOG entry under `## [Unreleased]`; README "Usage" section gets a topic-filter example.
+
+- [ ] `ABI.get_abi_item/3` (lookup helper over parse_specification output) [D:2/B:3/U:3 → Eff:1.5] 📋
+      Find a fragment by name with optional arg-type disambiguation for overloads. Takes the parsed-spec list (output of `parse_specification/1`) plus a name string plus optional arg types (list of type atoms). Returns `{:ok, %FunctionSelector{}}`, `{:error, :not_found}`, or `{:error, {:ambiguous, [%FunctionSelector{}, ...]}}` when multiple matches and no arg-types disambiguator. Mirrors `viem.getAbiItem`. New top-level function on `ABI`; `api()` declaration.
+      **Docs:** CHANGELOG entry under `## [Unreleased]`.
+
+- [ ] Strict-decode mode (`strict: true` opt) [D:5/B:6/U:4 → Eff:1.0] 📋
+      Defense-in-depth opt for adversarial-calldata callers. When `strict: true`, reject: non-zero high padding bits on `bool`/`uint`/`int` (must be zero/sign-extended), trailing bytes after the declared payload (currently silently ignored), `string`/`bytes` length prefixes that don't match available data. Default `strict: false` keeps existing behavior for back-compat. Apply across `decode/3`, `decode_call/3`, `decode_event/4`, `decode_error/2`. Mirrors `eth-abi`'s `strict_mode` and `viem`'s `strict` flag. New errors: `{:error, {:strict_violation, _detail}}`.
+      **Docs:** CHANGELOG entry under `## [Unreleased]`; README "Usage" section gets a security-note paragraph for the flag.
+
 - [ ] Implement `fixed<M>x<N>` / `ufixed<M>x<N>` [D:8/B:3/U:2 → Eff:0.31] ⚠️
       Decimal fixed-point types. Rarely seen in real contracts. High cost (both encoder and decoder, plus range validation), low payoff. **Defer unless user demand surfaces.** Alternative: reject at parse time for clarity.
       **Docs:** CHANGELOG entry; update README Support checkboxes (either flip to `[X]` if implemented, or mark as explicitly rejected-at-parse-time if that path is chosen).
@@ -266,6 +292,11 @@ The Bundle column maps each open item to its `📦 Bundles` membership (or `—`
 | `encode_packed` | ✅ Feature — shipped 1.2.0; combine with `decode_error/2` in a single feature upstream PR (spec-citing test vectors included) | 1.2.0 — Public Surface Pass (shipped) |
 | `decode_error/2` | ✅ Feature — shipped 1.2.0; combine with `encode_packed` in a single feature upstream PR | 1.2.0 — Public Surface Pass (shipped) |
 | `function` implementation | ✅ Feature — shipped 1.3.0; standalone upstream PR (independent of #53/#54/#55 follow-ups) | 1.3.0 — `function` type (shipped) |
+| `encode_call/3` | ✅ Feature — pure addition; pair with `encode_error/3` + `encode_event_topics/2` in a single encode-side symmetry upstream PR | Encode-Side Symmetry Pass |
+| `encode_error/3` | ✅ Feature — pure addition; pair with the rest of the bundle | Encode-Side Symmetry Pass |
+| `encode_event_topics/2` | ✅ Feature — pure addition; pair with the rest of the bundle | Encode-Side Symmetry Pass |
+| `get_abi_item/3` | ✅ Convenience addition — small standalone upstream PR | — |
+| Strict-decode mode (`strict: true`) | ✅ Feature — pure addition; opt-in flag preserves back-compat. Standalone upstream PR (touches multiple decoder paths but each change is gated on the flag) | — |
 | `fixed`/`ufixed` implementations | ⚠️ Feature — deferred (Solidity itself does not fully support fixed-point types — no real-world contracts emit them); reconsider if upstream Solidity work or a downstream consumer surfaces a concrete need | — |
 | `address payable` vs `address` doc note | ✅ Docs — one-line PR | — |
 | `decode_structs: true` atom bound | ⚠️ Hardening — shipped 1.4.0; upstream issue pending. Discuss approach first (behavior change on opt-in path); maintainers may prefer a `decode_structs: :existing_atoms` opt-in over the same `to_existing_atom` switch. | — |
