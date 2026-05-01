@@ -160,7 +160,7 @@ Currently supports:
 
 Round-trip safety — `decode(encode(x)) == x` — is property-tested with `stream_data` across every supported type above, including recursively nested tuples and fixed/dynamic arrays.
 
-Types marked `[ ]` above are recognized by the ABI grammar but not implemented by this library. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains them (including nested in arrays or tuples), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking. The explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms currently raise a `FunctionClauseError` earlier due to a separate lexer bug — tracked in ROADMAP.
+Types marked `[ ]` above are recognized by the ABI grammar but not implemented by this library. `ABI.FunctionSelector.decode/1`, `ABI.FunctionSelector.decode_type/1`, and `ABI.parse_specification/1` raise `ArgumentError` at parse time when a signature contains them (including nested in arrays or tuples, and the explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms), pointing at [exthereum/abi#54](https://github.com/exthereum/abi/issues/54) for tracking.
 
 # Docs
 

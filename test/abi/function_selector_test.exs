@@ -16,18 +16,10 @@ defmodule ABI.FunctionSelectorTest do
   end
 
   describe "parse-time rejection of unsupported grammar types (upstream #54)" do
-    # `function`, `fixed` (bare → default `fixed128x18`), `ufixed` (bare →
-    # default `ufixed128x18`) are accepted by the ABI grammar but not
-    # implemented by this library. Rejecting at parse time surfaces the
-    # error on the user's input instead of deep inside the encoder/decoder
-    # catch-all.
-    #
-    # The explicit-M-and-N forms like `fixed128x18` / `ufixed128x18` do NOT
-    # currently reach this walker: the lexer tokenizes single `x` as
-    # `letters` (LETTERS rule wins over the `x` terminal), so the parser
-    # reduces `typename digits` → `juxt_type(fixed, 128)` and raises
-    # FunctionClauseError earlier. That's a separate pre-existing lexer bug,
-    # tracked as a new ROADMAP task.
+    # `function`, `fixed` / `ufixed` (bare and explicit-M/N forms) are
+    # accepted by the ABI grammar but not implemented by this library.
+    # Rejecting at parse time surfaces the error on the user's input
+    # instead of deep inside the encoder/decoder catch-all.
 
     test "decode_type/1 raises on bare `function`" do
       assert_raise ArgumentError, ~r/function/, fn ->
@@ -44,6 +36,47 @@ defmodule ABI.FunctionSelectorTest do
     test "decode_type/1 raises on bare `ufixed`" do
       assert_raise ArgumentError, ~r/ufixed/, fn ->
         FunctionSelector.decode_type("ufixed")
+      end
+    end
+
+    test "decode_type/1 raises friendly error on explicit `fixed128x18`" do
+      # Pre-fix this raised FunctionClauseError because the lexer
+      # tokenized single `x` as `letters` (LETTERS rule shadowed the
+      # `x` terminal). Now `fixed`/`ufixed` are dedicated terminals so
+      # the parser routes the explicit-M/N form through the same
+      # rejection path as the bare form.
+      assert_raise ArgumentError, ~r/fixed128x18/, fn ->
+        FunctionSelector.decode_type("fixed128x18")
+      end
+    end
+
+    test "decode_type/1 raises friendly error on explicit `ufixed256x80`" do
+      assert_raise ArgumentError, ~r/ufixed256x80/, fn ->
+        FunctionSelector.decode_type("ufixed256x80")
+      end
+    end
+
+    test "decode_type/1 raises on dynamic array of explicit fixed" do
+      assert_raise ArgumentError, ~r/fixed128x18/, fn ->
+        FunctionSelector.decode_type("fixed128x18[]")
+      end
+    end
+
+    test "decode_type/1 raises on tuple containing explicit ufixed" do
+      assert_raise ArgumentError, ~r/ufixed256x80/, fn ->
+        FunctionSelector.decode_type("(uint256,ufixed256x80)")
+      end
+    end
+
+    test "decode/1 raises on selector argument with explicit fixed" do
+      assert_raise ArgumentError, ~r/fixed128x18/, fn ->
+        FunctionSelector.decode("foo(fixed128x18)")
+      end
+    end
+
+    test "decode/1 raises on selector return with explicit ufixed" do
+      assert_raise ArgumentError, ~r/ufixed256x80/, fn ->
+        FunctionSelector.decode("foo(uint256)->ufixed256x80")
       end
     end
 
@@ -81,6 +114,45 @@ defmodule ABI.FunctionSelectorTest do
       assert {:array, {:uint, 256}} = FunctionSelector.decode_type("uint256[]")
       assert {:bytes, 32} = FunctionSelector.decode_type("bytes32")
       assert :address = FunctionSelector.decode_type("address")
+    end
+  end
+
+  describe "lexer/parser identifier handling for `x` and fixed/ufixed keywords" do
+    # Regression tests for the lexer reorder + dedicated-terminal fix.
+    # Pre-fix: single-char `x` lexed as `letters` (LETTERS rule shadowed
+    # the `x` terminal). Post-fix: `x` lexes as the `'x'` terminal, and
+    # `fixed`/`ufixed` lex as dedicated terminals — the parser must accept
+    # all three as identifier_parts so function and argument names still
+    # work.
+
+    test "decode/1 parses function named `x`" do
+      selector = FunctionSelector.decode("x(uint256)")
+      assert selector.function == "x"
+      assert selector.types == [%{type: {:uint, 256}}]
+    end
+
+    test "decode/1 parses argument named `x`" do
+      selector = FunctionSelector.decode("foo(uint256 x)")
+      assert selector.function == "foo"
+      assert selector.types == [%{type: {:uint, 256}, name: "x"}]
+    end
+
+    test "decode/1 parses function named `fixed` (keyword as identifier)" do
+      selector = FunctionSelector.decode("fixed(uint256)")
+      assert selector.function == "fixed"
+      assert selector.types == [%{type: {:uint, 256}}]
+    end
+
+    test "decode/1 parses function named `ufixed` (keyword as identifier)" do
+      selector = FunctionSelector.decode("ufixed(uint256)")
+      assert selector.function == "ufixed"
+      assert selector.types == [%{type: {:uint, 256}}]
+    end
+
+    test "decode/1 parses function name containing `x` mid-string" do
+      selector = FunctionSelector.decode("transfer_x_amount(address,uint256)")
+      assert selector.function == "transfer_x_amount"
+      assert selector.types == [%{type: :address}, %{type: {:uint, 256}}]
     end
   end
 

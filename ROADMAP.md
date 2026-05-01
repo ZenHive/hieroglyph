@@ -14,7 +14,38 @@
 
 **1.1.0 shipped 2026-05-01** — patch-bumped from `1.0.0` to a minor release because two new public APIs were added (`ABI.method_id/1`, `ABI.decode_call/3`) alongside the bug fixes. See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01) for the full entry list.
 
-Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. Other fork-only polish (padding-helper extraction, `is_dynamic?` → `dynamic?` rename, `mix credo --strict` cleanup) landed in 1.0.0; the round-trip property suite (which surfaced #55 on first run), the `dynamic?/1` zero-length-fixed-array crash, `address payable` typedoc gap, empty-args calldata coverage, and the new `decode_call/3` + `method_id/1` APIs all landed in 1.1.0. The 2026-04-30 `defi-skills` mining discovery task completed — 7 candidate test/coverage entries staged in "Proposed additions from defi-skills mining" below for triage into existing sections (one — empty-args calldata — landed in 1.1.0). Remaining fork-only items: the lexer rule-ordering bug (tracked in Bugs below).
+Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer response on the upstream issues. Other fork-only polish (padding-helper extraction, `is_dynamic?` → `dynamic?` rename, `mix credo --strict` cleanup) landed in 1.0.0; the round-trip property suite (which surfaced #55 on first run), the `dynamic?/1` zero-length-fixed-array crash, `address payable` typedoc gap, empty-args calldata coverage, and the new `decode_call/3` + `method_id/1` APIs all landed in 1.1.0. The lexer `x`-terminal-shadow bug (sub-bug of upstream #54, filing deferred to a future batched issue) shipped under `## [Unreleased]` and routes the explicit `fixed<M>x<N>` / `ufixed<M>x<N>` forms through the same friendly rejection path as the bare forms. The 2026-04-30 `defi-skills` mining discovery task completed — 7 candidate test/coverage entries staged in "Proposed additions from defi-skills mining" below for triage into existing sections (one — empty-args calldata — landed in 1.1.0).
+
+**Next direction (post-1.1.0):** Agent Economy phase. `hieroglyph` is Descripex-less today. The downstream consumer chain — cartouche (codegen) → onchain → onchain_<protocol> — already pins this library's public API via generated bindings, so a Descripex manifest doubles as the contract-stability artifact those packages can diff in CI on version bumps. The MPP-fronted API service at the edge of that tree is a tertiary consumer (paid-tool catalog). See the new section below. Phase 1 (annotate `ABI` top-level + Discoverable) is the highest-Eff task in the roadmap (3.50) and gates the 1.2.0 bump.
+
+**Shipping units:** see `📦 Bundles` below for the three release-bundles currently grouped (1.2.0 Agent Economy, DeFi Real-World Fixtures, Property Suite Expansion). The other 7 open tasks ship standalone.
+
+---
+
+## 📦 Bundles
+
+Tasks grouped by shipping unit. A bundle ships as one PR / one release; member tasks share scope, files, or sourcing. Standalone tasks (no `**Bundle:**` annotation on the task itself) ship independently. Each member task keeps its own D/B/U score — the per-bundle "Avg Eff" below is a planning convenience, not a substitute.
+
+### Bundle: 1.2.0 — Agent Economy
+**Members:** Agent Economy Phase 1, Phase 2, Phase 3
+**Avg Eff:** 2.54 — (3.50 + 1.375 + 2.75) / 3
+**Ships:** as the `1.2.0` release
+**Why bundle:** Phase 1 alone (top-level `ABI` only) gives partial manifest coverage; Phase 3 alone (manifest task + validation test) has nothing to validate without Phases 1+2; the hint-rot cross-check in Phase 3 only protects what Phases 1+2 declare. Three pieces, one capability. Splitting releases would force a 1.2.0 → 1.2.1 → 1.2.2 chain, each bump churning the manifest hash that every downstream cartouche/onchain consumer pins against.
+**Sequencing:** Phase 1 → Phase 2 → Phase 3. Each phase's acceptance criteria depend on the previous landing.
+
+### Bundle: DeFi Real-World Fixtures
+**Members:** Real-world golden calldata fixtures from `defi-skills build`, Function selector golden vectors against `FunctionSelector.encode/1`
+**Avg Eff:** 2.25 — (2.0 + 2.5) / 2
+**Ships:** single tests-only PR, no production code touched
+**Why bundle:** both surface from the same `defi-skills` v0.3.0 mining pass (see "Proposed additions from defi-skills mining" intro). Selectors and calldata samples come from the same playbooks at the same paths; one PR shares the citation block, fixture-file location decision, README "Real-world fixtures" note, and CHANGELOG entry. Splitting doubles the bookkeeping for one quality goal.
+**Sequencing:** order-independent — selector vectors don't depend on the calldata fixture file's existence and vice versa.
+
+### Bundle: Property Suite Expansion
+**Members:** `tuple[]` round-trip coverage, Empty `bytes` / empty `tuple[]` inside struct fields, Multiple top-level struct args, Deep struct nesting (depth ≥ 4)
+**Avg Eff:** 1.52 — (1.25 + 1.5 + 1.33 + 2.0) / 4
+**Ships:** single PR expanding `test/abi/roundtrip_property_test.exs`
+**Why bundle:** every member edits the same property test file and the same generator helpers (`composite/2`, `value_for/1`, the arg-list builder). They're sequential, not parallel — bumping `composite` depth interacts with the new `{:array, {:tuple, _}, :dynamic}` clause; the empty-`tuple[]` fixtures depend on the `tuple[]` generator landing first. Integrating in one PR avoids merge friction inside the generator and runs the (slow) property suite once instead of four times in CI.
+**Sequencing:** `tuple[]` round-trip → empty `tuple[]` fixtures → multiple top-level struct args → deep nesting bump. Depth bump lands last so it stresses the most generator surface.
 
 ---
 
@@ -24,11 +55,85 @@ Upstream bugs #53, #54, and #55 shipped locally; still awaiting maintainer respo
 |---|---|---|---|
 | **Indexed reference-type event parameters decoded wrong** | ✅ shipped 1.0.0 [upstream #53](https://github.com/exthereum/abi/issues/53) | `lib/abi/event.ex:146-172` | Fix shipped: indexed reference-type params (all arrays — fixed-size or dynamic — plus tuples, `string`, `bytes`) now return `{:indexed_hash, <<32 bytes>>}` via a local `reference_type?/1` predicate (matches the Solidity spec's "all complex types" event-indexing rule, which is broader than `FunctionSelector.dynamic?/1`'s head/tail-layout rule — `uint256[2]` and static-only tuples are static for regular encoding but still hashed in topics). Static value-type indexed params unchanged. See [CHANGELOG.md](CHANGELOG.md#100---2026-04-24). |
 | **`fixed`/`ufixed`/`function` types parse but can't encode + typespec gaps** | ✅ shipped 1.0.0 [upstream #54](https://github.com/exthereum/abi/issues/54) | `lib/abi/parser.ex`, `lib/abi/function_selector.ex:9-19` | Fix shipped: parse-time rejection of `:function`, `{:fixed, M, N}`, `{:ufixed, M, N}` (including nested in arrays/tuples) in `ABI.Parser.parse!/2` with an `ArgumentError` linking to the upstream issue; `{:bytes, pos_integer()}` added to `@type type`. See [CHANGELOG.md](CHANGELOG.md#100---2026-04-24). |
-| **Lexer `x` terminal shadowed by LETTERS rule** | ⬜ (no issue yet) [D:3/B:4/U:4 → Eff:1.33] 📋 | `src/ethereum_abi_lexer.xrl:13,19` | Discovered while writing tests for #54. `fixed128x18` / `ufixed128x18` tokenize the single `x` as `letters` (LETTERS rule appears before the `x` terminal; leex picks the earlier rule on equal-length matches), so grammar rule `type -> typename digits 'x' digits` never fires. Parser reduces `typename digits` → `juxt_type(fixed, 128)` → `FunctionClauseError` instead of a clean parse-time error. Scope: fix options are (a) reorder lexer rules so `x` outranks LETTERS, making sure identifiers like `foo_x_bar` still tokenize correctly (needs testing — LETTERS is currently the only rule producing `letters` tokens for identifier parts); (b) extend grammar's `identifier_part` to also accept the `x` terminal so identifiers still work; (c) wrap `:ethereum_abi_parser.parse/1` in a `try/rescue` inside `ABI.Parser.parse!/2` and convert the FunctionClauseError to an ArgumentError with an upstream-#54 link. File an upstream issue before picking an approach. **Docs:** CHANGELOG entry; if the fix ends up surfacing the same rejection as #54, may update the README lexer caveat. |
+| **Lexer `x` terminal shadowed by LETTERS rule** | ✅ shipped Unreleased (upstream filing deferred — batched into a future combined-bugs issue) | `src/ethereum_abi_lexer.xrl`, `src/ethereum_abi_parser.yrl` | Fix shipped: dedicated `fixed_typename` / `ufixed_typename` terminals in the lexer so the `'x'` separator only appears in `fixed`/`ufixed` contexts; `'x'` rule moved before `{LETTERS}` so single `x` lexes as the terminal; parser gains `identifier_part -> 'x' \| fixed_typename \| ufixed_typename` so single-char `x` and the keyword forms still work as function/argument names. The explicit-M/N forms now route through `ABI.Parser.reject_unsupported!/1` and raise the same friendly `ArgumentError` (with upstream-#54 link) that bare `fixed`/`ufixed` already do. New shift/reduce count is 3 (was 1) — the 2 new conflicts resolve as shift, which is the desired behavior; documented inline in the `.yrl`. See [CHANGELOG.md](CHANGELOG.md#unreleased). |
 | **`encode_bytes/1` accidentally public** | ⬜ (no issue) | `lib/abi/type_encoder.ex:353` | No `@doc`, no `@spec`, no internal callers outside module. Changing `def` → `defp` is technically a breaking API change for downstream consumers we can't see — Codex review flagged this. Skip the issue; fold into a future PR or leave alone. **Docs:** CHANGELOG entry (breaking, if changed). |
 | **`decode_event/4` mixed raise + tagged-tuple contract** | ⬜ (hold) | `lib/abi/event.ex:93-148` | Returns `{:error, _}` for topic/length mismatches but calls `decode_raw` internally, which raises on malformed data. Scope of change = arguable 2.0 breaking API — discuss before PR, not yet filed upstream. **Docs:** CHANGELOG entry (breaking); possibly README note on the unified return contract. |
 | **`dynamic?/1` crashes on zero-length fixed array** | ✅ shipped 1.1.0 (no upstream issue yet) | `lib/abi/function_selector.ex:484` | One-line fix shipped: `def dynamic?({:array, _type, 0}), do: false`. Encoder/decoder paths already handle zero-length arrays correctly — verified by extending `roundtrip_property_test.exs`'s fixed-array length domain to `0..3`. Pre-existing in upstream `exthereum/abi`; not yet filed (consider folding with the lexer-rule-ordering fix into a single PR). See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01). |
 | **`encode_int/2` byte-vs-bit overflow guard rejected ALL `int<N>`** | ✅ shipped 1.1.0 [upstream #55](https://github.com/exthereum/abi/issues/55) | `lib/abi/type_encoder.ex:382-401` | Surfaced by the round-trip property suite on first run. The overflow guard compared `byte_size(significant_bytes)` against `desired_size_bytes - 1`, which is `0` for `int8` — so even encoding `0` raised. Replaced with a numeric range check against `2^(N-1)` performed up-front, so the encoder accepts the full signed range `-2^(N-1)..2^(N-1)-1` for every `int<N>`. The pre-existing `"int overflow raises data overflow"` test passed only because the encoder was broken for any value; tightened to assert specific in-range values encode AND specific boundary cases (`128`, `-129`) raise. Filed upstream 2026-05-01 — awaiting maintainer response. See [CHANGELOG.md](CHANGELOG.md#110---2026-05-01). |
+
+---
+
+## 🤖 Agent Economy
+
+Per `~/.claude/includes/agent-economy.md` and `elixir-setup.md`'s "≥3 public modules" rule, `hieroglyph` should be Descripex-annotated so its public surface is discoverable via `__api__/0` introspection, `ABI.describe/0..2` progressive disclosure, and a static `api_manifest.json`. **25 public functions across 6 modules currently have zero `api()` annotations.**
+
+**Downstream consumer chain (real, in this monorepo):**
+
+```
+hieroglyph ← cartouche ← onchain ← {onchain_aave, onchain_evm, onchain_js, onchain_tempo}
+                                      ← [MPP-fronted API service at the edge]
+```
+
+- **`cartouche`** (`{:hieroglyph, "~> 1.0"}`) is a codegen heavyweight: `lib/mix/cartouche.gen.ex` emits `ABI.encode/2` / `ABI.decode/3` calls into generated contract-binding modules at compile time, plus `lib/cartouche/{transaction,erc_20,sleuth,open_chain,rpc}.ex` use ABI directly.
+- **`onchain`** (`{:cartouche, "~> 0.1"}`) consumes ABI directly in `lib/onchain/{abi,log,sleuth}.ex` and inherits cartouche-generated bindings.
+- The four **`onchain_<protocol>`** packages depend on `onchain` and consume hieroglyph through that path.
+- An **MPP-fronted API service** (`~/_DATA/code/mpp`) sits at the edge — not a direct hieroglyph consumer.
+
+**Layered value of Descripex on hieroglyph:**
+
+1. **Contract-stability artifact (primary, immediate).** The manifest captures every public function's signature + hints. cartouche / onchain CI hash the pinned-version manifest and detect breaking-change drift before generated code breaks downstream.
+2. **Hexdocs richness + EIP-8004 verification (universal, immediate).** `api()` declarations land in hexdocs as structured hints; the static manifest is what an EIP-8004 verifier reads to confirm the deployed library matches its declared interface. Pure-functional core ⇒ trivially trustless-verifiable (per `agent-economy.md`: "the more pure your core, the easier trustless verification") — don't muddy this with Rust NIFs.
+3. **Paid-tool catalog (secondary, eventual).** If the MPP-fronted API surfaces any hieroglyph primitives as paid tools, the manifest IS the catalog. Hint quality determines whether agents make wasted (paid) calls. Whether MPP exposes raw ABI or higher-level action verbs is a design call at that layer — hieroglyph's job is just accurate `__api__/0`.
+
+**Precedent:** `~/_DATA/code/mpp` (`lib/mpp.ex` for Discoverable setup, `lib/mpp/amount.ex` and `lib/mpp/mcp.ex` for `api()` shapes including the polymorphic-arg pattern, `lib/mix/tasks/mpp.manifest.ex` for the manifest task, `test/mpp/descripex_test.exs` for the hint-rot validation test). Match its conventions.
+
+- [ ] Phase 1: Descripex on `ABI` top-level [D:2/B:7/U:7 → Eff:3.50] 🎯
+      Add `{:descripex, "~> 0.6"}` as a **runtime** dep in `mix.exs` (full dep, not `only: [:dev, :test]` — `__api__/0` is runtime-callable). Annotate the seven public functions in `lib/abi.ex` (`encode/2`, `method_id/1`, `decode/3`, `decode_call/3`, `decode_event/4`, `event_signature/1`, `parse_specification/1`) with `api()` declarations under namespace `/abi`.
+
+      Six of the seven take a polymorphic first arg (`binary() | FunctionSelector.t()` — raw signature OR parsed struct). Per the mpp precedent (`lib/mpp/mcp.ex:130-151` `payment_required_error/1` accepts `Challenge.t() | [Challenge.t()]`), the `api()` block uses plain `kind: :value` with a descriptive blurb like `"Either a raw signature string (e.g. \"transfer(address,uint256)\") or a pre-parsed %ABI.FunctionSelector{} struct"`. The `@spec` carries the type union. No special schema syntax needed.
+
+      Wire `use Descripex.Discoverable, modules: [ABI]` on the `ABI` module so `ABI.describe/0..2` works (pattern: `lib/mpp.ex:54-72`).
+
+      **Acceptance:** `ABI.describe()` lists `:abi`; `ABI.describe(:abi, :encode)` returns full hints with the polymorphic first arg captured cleanly; `mix descripex.manifest --app hieroglyph --pretty --output /tmp/m.json` emits a manifest containing all seven function entries; `iex` session can call `ABI.__api__()` and get back a non-empty list with `:hints.description` populated for each.
+
+      **Version impact:** bump `mix.exs` from `1.1.x` → **`1.2.0`** in the same release (1.1.0 already shipped 2026-05-01 with `method_id/1` + `decode_call/3` — see `CHANGELOG.md`). Adding a runtime dep changes downstream consumers' (cartouche, onchain) dependency closure — minor bump per semver.
+
+      **Bundle:** 1.2.0 — Agent Economy
+      **Docs:** CHANGELOG entry; new "Agent Integration" section in README; CLAUDE.md "Layout" note that `ABI` is `Descripex.Discoverable`.
+
+- [ ] Phase 2: Descripex on remaining public modules [D:4/B:6/U:5 → Eff:1.375] 📋
+      Annotate the 13 remaining public functions: `ABI.Event` (3 fns: `decode_event/4`, `event_signature/1`, `canonical/2`); `ABI.FunctionSelector` (5 — skip the 3 already `@doc false` — public ones: `decode/1`, `decode_raw/1`, `parse_specification_item/1`, `decode_type/1`, `encode/3`); `ABI.TypeEncoder` (2 — skip the 1 `@doc false` — public: `encode/2`, `encode_raw/2`); `ABI.TypeDecoder` (4: `decode/3`, `decode_raw/3`, `tuple_value/3`, `decode_bytes/3`); `ABI.Math` (4: `mod/2`, `kec/1`, `pad/4`, `unpad/3`).
+
+      None of these are polymorphic — schemas are mechanical once Phase 1 has settled the descriptive-blurb pattern.
+
+      Update `use Descripex.Discoverable, modules: […]` to include all six annotated modules. Namespace assignment (single-segment, lowercase, group by concept per the mpp pattern):
+        - `ABI` → `/abi`
+        - `ABI.Event`, `ABI.FunctionSelector` → `/selector` (both deal with signatures/selectors)
+        - `ABI.TypeEncoder`, `ABI.TypeDecoder` → `/codec`
+        - `ABI.Math` → `/math`
+
+      Implementing session may adjust groupings — these are starting suggestions, not mandatory.
+
+      **Acceptance:** `ABI.describe()` lists all six modules; every public, non-`@doc false` function returns hints via `ABI.describe(:module, :function)`; `mix descripex.manifest --app hieroglyph` emits 25 function entries; namespace assertions in the validation test pass.
+
+      **Bundle:** 1.2.0 — Agent Economy
+      **Docs:** CHANGELOG entry. (No new README section — Phase 1 already planted "Agent Integration".)
+
+- [ ] Phase 3: Custom manifest task + hint-rot validation test [D:2/B:5/U:6 → Eff:2.75] 🎯
+      Add `lib/mix/tasks/hieroglyph.manifest.ex` — thin wrapper around `Descripex.Manifest.build(ABI.__descripex_modules__())` that writes `api_manifest.json` (or accepts a path arg). Direct copy of `~/_DATA/code/mpp/lib/mix/tasks/mpp.manifest.ex` with module name swap. ~30 lines.
+
+      Add `test/abi/agent_economy_test.exs` — port of `~/_DATA/code/mpp/test/mpp/descripex_test.exs`. Three describe blocks:
+        1. `api() annotations` — for each `@annotated_modules` entry, assert `__api__()` returns non-empty list, every entry has `:hints.description` binary.
+        2. `Discoverable (ABI.describe/0-2)` — assert `ABI.describe()` lists all annotated modules, `ABI.describe/1` and `/2` work for known names.
+        3. `namespace assignment` — assert each module's `Code.fetch_docs/1` metadata has the expected `namespace:`.
+      Plus the cross-check from mpp's "all public functions in annotated modules have hints metadata" test: walk `module_info(:exports)`, filter the standard exports (`module_info`, `__info__`, `__api__`, `__struct__`, `describe`, `__descripex_modules__`, etc.), assert every remaining export is in `__api__()`. **Without this gate, hints rot silently when new `def`s land without `api()` — and silent rot in hieroglyph propagates as silent contract drift through cartouche-generated bindings into every onchain_<protocol> package.** This test is the load-bearing piece of the agent-economy phase.
+
+      Document `mix hieroglyph.manifest` (and the bare `mix descripex.manifest --app hieroglyph` path) as the canonical emission commands in README. The emitted `api_manifest.json` is what cartouche/onchain CI hash for contract-stability checks.
+
+      **Acceptance:** `mix hieroglyph.manifest` writes a valid `api_manifest.json` containing all 25 functions; running the validation test passes; deliberately removing one `api()` annotation in a scratch branch causes the cross-check test to fail with a clear "Module.fname is exported but not declared with api()" message.
+
+      **Bundle:** 1.2.0 — Agent Economy
+      **Docs:** CHANGELOG entry; README "Agent Integration" expanded with manifest emission command + a note that downstream cartouche/onchain CI may diff the manifest across hieroglyph version bumps; CLAUDE.md "Layout" gets `lib/mix/tasks/hieroglyph.manifest.ex` row.
 
 ---
 
@@ -116,6 +221,7 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
         0000000000000000000000001111111111111111111111111111111111111111
         0000000000000000000000000000000000000000000000000000000000000000
       ```
+      **Bundle:** DeFi Real-World Fixtures
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 - [ ] Function selector golden vectors against `FunctionSelector.encode/1` [D:2/B:5/U:5 → Eff:2.5] 🎯
@@ -136,6 +242,7 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       - `queueWithdrawals((address[],uint256[],address)[])` → `0x0dd8dd02` (EigenLayer — `tuple[]` in signature)
 
       The Curve `uint256[3]`, Uniswap tuple, Balancer multi-tuple, and EigenLayer `tuple[]` cases double as proof that the canonical-signature serialisation in `function_selector.ex` matches the spec.
+      **Bundle:** DeFi Real-World Fixtures
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 - [x] ✅ Empty-args calldata path coverage [D:1/B:2/U:3 → Eff:2.5]
@@ -145,12 +252,14 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       `roundtrip_property_test.exs` `composite/2` recursion is capped at depth 3 (line ~252 of the file). Pendle `swapExactTokenForPt` exercises depth 5: `args.input` (struct) contains `swapData` (struct) which contains `extCalldata` (bytes); the `limit` arg (struct) contains `normalFills` and `flashFills` (each `tuple[]`). Bumping `composite` depth to 5 is a one-line change; the failures (if any) it surfaces are real.
 
       Motivated by: `pendle_swap_token_for_pt` (`0xc81f847a`), `pendle_swap_token_for_yt` (`0xed48907e`), `pendle_add_liquidity` (`0x12599ac6`).
+      **Bundle:** Property Suite Expansion
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 - [ ] Multiple top-level struct args [D:3/B:4/U:4 → Eff:1.33] 📋
       Roundtrip property test always wraps arguments as a single tuple or a single dynamic array. Real protocols often pass **multiple sibling structs** as separate top-level args (Balancer V2 `swap(SingleSwap, FundManagement, uint256, uint256)` is the canonical case — 4 top-level args of which 2 are structs). Add a generator that builds an arg list `[t1, t2, ...]` where 2+ entries are independently-generated structs. Catches head/tail offset arithmetic when sibling tuples are dynamic at different rates.
 
       Motivated by: `balancer_swap` (`0x52bbbe29`) — `swap((bytes32,uint8,address,address,uint256,bytes),(address,bool,address,bool),uint256,uint256)`.
+      **Bundle:** Property Suite Expansion
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 - [ ] `tuple[]` (dynamic array of tuples) round-trip coverage [D:4/B:5/U:5 → Eff:1.25] 📋
@@ -159,6 +268,7 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       - Pendle `limit.normalFills` and `limit.flashFills` (both `(...)[]` fields nested inside a struct, typically empty `[]` in practice — see the empty-array edge case task below).
 
       Add a `value_for({:array, {:tuple, [...]}, :dynamic})` clause and a property that exercises `tuple_of(static_only)[]`, `tuple_of(mixed)[]`, and an empty `tuple[]`.
+      **Bundle:** Property Suite Expansion
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 - [ ] Empty `bytes` and empty `tuple[]` inside struct fields [D:3/B:5/U:4 → Eff:1.5] 📋
@@ -172,6 +282,7 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
       - struct with `(bytes,bytes)` where both are empty
       - struct with `tuple[]` empty as the only dynamic field
       - struct with `tuple[]` empty followed by a non-empty `bytes`
+      **Bundle:** Property Suite Expansion
       **Docs:** CHANGELOG entry under `## [Unreleased]`.
 
 **Out-of-scope findings (deliberately not proposed):**
@@ -208,24 +319,36 @@ Pattern-grouped, with the `defi-skills` action(s) that motivated each. Concrete 
 
 ## Upstream / Fork Split
 
-| Item | Upstream PR candidate? |
-|---|---|
-| Indexed dynamic event bug | ✅ Bug — file issue, then PR |
-| `fixed`/`ufixed`/`function` parse-but-don't-encode | ✅ Bug — file issue |
-| `encode_bytes/1` → `defp` | ✅ Hygiene — one-line PR |
-| Map-input tests | ✅ Tests for recently-merged feature |
-| Round-trip tests | ✅ Pure addition |
-| Typespec + doc gaps | ✅ Same shape as #52 |
-| README refresh | ✅ Docs-only |
-| Padding dedup into `ABI.Math` | ✅ Shipped locally on `zenhive`, ready for upstream PR |
-| Credo strict style cleanup | ✅ Shipped locally on `zenhive`, ready for upstream PR |
-| `is_dynamic?` → `dynamic?` rename | ✅ Shipped locally on `zenhive`, ready for upstream PR (optional deprecation shim can be added during review) |
-| `decode_event/4` error contract | ⚠️ Arguable breaking change — discuss first |
-| `decode_call/3` + `method_id/1` | ✅ Pure addition — file as upstream feature PR |
-| `encode_packed` | ⚠️ Feature — issue first |
-| `decode_error/2` | ⚠️ Feature — issue first |
-| `fixed`/`ufixed` / `function` implementations | ⚠️ Feature — confirm interest first |
-| `address payable` vs `address` doc note | ✅ Docs — one-line PR |
-| `decode_structs: true` atom bound | ⚠️ Hardening — discuss approach first (behavior change on opt-in path) |
+The Bundle column maps each open item to its `📦 Bundles` membership (or `—` for standalone / already-shipped items). For bundled items the upstream-pitch position is per-item; bundles only constrain how this fork ships, not how upstream PRs are split — though the DeFi Fixtures and Property Suite bundles each map naturally to a single upstream "test coverage expansion" PR matching the bundle's shape.
+
+| Item | Upstream PR candidate? | Bundle |
+|---|---|---|
+| Indexed dynamic event bug | ✅ Bug — file issue, then PR | — |
+| `fixed`/`ufixed`/`function` parse-but-don't-encode | ✅ Bug — file issue | — |
+| Lexer `x`-terminal shadowed by LETTERS (sub-bug of #54) | ⚠️ Bug — defer to a future batched upstream issue with PR offer | — |
+| `encode_bytes/1` → `defp` | ✅ Hygiene — one-line PR | — |
+| Map-input tests | ✅ Tests for recently-merged feature | — |
+| Round-trip tests | ✅ Pure addition | — |
+| Typespec + doc gaps | ✅ Same shape as #52 | — |
+| README refresh | ✅ Docs-only | — |
+| Padding dedup into `ABI.Math` | ✅ Shipped locally on `zenhive`, ready for upstream PR | — |
+| Credo strict style cleanup | ✅ Shipped locally on `zenhive`, ready for upstream PR | — |
+| `is_dynamic?` → `dynamic?` rename | ✅ Shipped locally on `zenhive`, ready for upstream PR (optional deprecation shim can be added during review) | — |
+| `decode_event/4` error contract | ⚠️ Arguable breaking change — discuss first | — |
+| `decode_call/3` + `method_id/1` | ✅ Pure addition — file as upstream feature PR | — |
+| `encode_packed` | ⚠️ Feature — issue first | — |
+| `decode_error/2` | ⚠️ Feature — issue first | — |
+| `fixed`/`ufixed` / `function` implementations | ⚠️ Feature — confirm interest first | — |
+| `address payable` vs `address` doc note | ✅ Docs — one-line PR | — |
+| `decode_structs: true` atom bound | ⚠️ Hardening — discuss approach first (behavior change on opt-in path) | — |
+| Phase 1: Descripex on `ABI` top-level | ❌ Fork-only — adds a runtime `:descripex` dep upstream maintainers haven't opted into; pitch only if they signal interest in the agent-economy pattern | 1.2.0 — Agent Economy |
+| Phase 2: Descripex on remaining public modules | ❌ Fork-only — same `:descripex` dep concern as Phase 1 | 1.2.0 — Agent Economy |
+| Phase 3: `mix hieroglyph.manifest` + hint-rot validation test | ❌ Fork-only — task name is `hieroglyph.manifest`; if Phase 1+2 ever upstream, the task would land as `abi.manifest` instead | 1.2.0 — Agent Economy |
+| Real-world golden calldata fixtures from `defi-skills build` | ✅ Pure tests — file as part of a combined "real-world DeFi fixtures" PR after #53/#54 responses land | DeFi Real-World Fixtures |
+| Function selector golden vectors against `FunctionSelector.encode/1` | ✅ Pure tests — combine with calldata fixtures into one upstream PR matching the bundle | DeFi Real-World Fixtures |
+| `tuple[]` (dynamic array of tuples) round-trip coverage | ✅ Pure tests — file the whole bundle as one "round-trip property suite expansion" upstream PR | Property Suite Expansion |
+| Empty `bytes` / empty `tuple[]` inside struct fields | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
+| Multiple top-level struct args | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
+| Deep struct nesting (depth ≥ 4) round-trip | ✅ Pure tests — same upstream PR as the rest of the bundle | Property Suite Expansion |
 
 Stale upstream issues worth courtesy-triaging (not opening, just noting): #17, #25, #32 all look fixed on current `main`.
