@@ -9,11 +9,11 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (2 of 8 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (3 of 8 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 34 — ABI.encode_call/3 (selector-prefixed calldata) on 2026-06-04
 
-**Up next:** Task 34 — ABI.encode_call/3 (selector-prefixed calldata) [D:2/B:5/U:6 → Eff:2.75] 🎯
+**Up next:** Task 35 — ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -51,7 +51,7 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 |------|--------|-------|
 | Task 32 | ✅ | 🎁 **peer_parity** · ABI.decode_call/3 + ABI.method_id/1 [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
 | Task 33 | ✅ | 🎁 **peer_parity** · Implement function type encode/decode [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
-| Task 34 | ⬜ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_call/3 (selector-prefixed calldata) [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
+| Task 34 | ✅ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_call/3 (selector-prefixed calldata) [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
 | Task 35 | ⬜ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 36 | ⬜ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_event_topics/2 (event log topic filter builder) [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 37 | ⬜ | 🎁 **peer_parity** · ABI.get_abi_item/3 (lookup helper over parse_specification output) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |

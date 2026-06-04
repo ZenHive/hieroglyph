@@ -844,7 +844,7 @@
       "phase": 5,
       "bundle": "encode_symmetry",
       "milestone": "encode_symmetry",
-      "status": "pending",
+      "status": "done",
       "title": "ABI.encode_call/3 (selector-prefixed calldata)",
       "scores": {
         "d": 2,
@@ -855,6 +855,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "codex",
       "acceptance_criteria": [
         "encode_call/3 accepts a signature string and returns selector-prefixed calldata",
         "encode_call/3 accepts a %FunctionSelector{} and returns the same blob",
@@ -863,8 +864,18 @@
         "README Usage gets an encode-side example matching the existing decode_call/3 example",
         "CHANGELOG entry under [Unreleased]"
       ],
+      "domains": [
+        "abi",
+        "elixir"
+      ],
+      "shipped_in": "576e9c1cd14f101290853219c88f0a7b3b2c0498",
       "body": "Symmetric counterpart to decode_call/3. One-shot method_id/1 ++ encode/2: takes a signature string or %FunctionSelector{} plus the args list, returns the 4-byte-prefixed calldata blob. Mirrors viem.encodeFunctionData / ethers.Interface.encodeFunctionData / eth_abi.encode_abi_with_selector. api() declaration with composes_with: link to decode_call/3. Three clauses: signature-binary, %FunctionSelector{function: nil} (raise ArgumentError), %FunctionSelector{}.",
+      "started_at": "2026-06-04",
+      "done_at": "2026-06-04",
       "scored_at": "2026-05-01",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780595116868-7d1b5522, 576e9c1cd14f101290853219c88f0a7b3b2c0498).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
@@ -883,12 +894,17 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "grok",
       "acceptance_criteria": [
         "encode_error/3 returns selector-prefixed revert data for a signature + args",
         "Accepts both a signature string and a %FunctionSelector{}",
         "Round-trips against decode_error/2",
         "api() declaration carries a composes_with: link to decode_error/2",
         "CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
       ],
       "body": "Symmetric counterpart to decode_error/2. Given an error signature + args, return <<selector::4-bytes, abi_encoded_args::binary>>. Test-harness, RPC-mock, and contract-fuzzer use cases. Mirrors viem.encodeErrorResult. api() declaration with composes_with: link to decode_error/2. Same three-clause shape as encode_call/3.",
       "scored_at": "2026-05-01",
@@ -910,6 +926,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "codex",
       "acceptance_criteria": [
         "Returns [topic0, topic1?, ...] for a signature + indexed values",
         ":any wildcard leaves a topic slot unfiltered",
@@ -918,6 +935,10 @@
         "api() declaration carries composes_with: links to decode_event/4 and event_signature/1",
         "README Usage gets a topic-filter example",
         "CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
       ],
       "body": "Symmetric counterpart to decode_event/4. Given a parsed event signature + indexed-arg values (or :any wildcards for unfiltered slots), return [topic0, topic1?, topic2?, topic3?] for eth_getLogs. Indexed value types pad to 32; indexed reference types (arrays — fixed or dynamic — plus tuples, string, bytes) hash via the existing reference_type?/1 predicate from the #53 fix. Anonymous events skip topic0. Mirrors viem.encodeEventTopics / ethers.Interface.encodeFilterTopics. api() declaration with composes_with: links to decode_event/4 and event_signature/1.",
       "scored_at": "2026-05-01",
@@ -938,6 +959,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "cursor",
       "acceptance_criteria": [
         "Returns {:ok, %FunctionSelector{}} for a unique name match",
         "Returns {:error, :not_found} when no fragment matches",
@@ -945,6 +967,10 @@
         "Arg-types argument disambiguates overloads",
         "api() declaration present",
         "CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
       ],
       "body": "Find a fragment by name with optional arg-type disambiguation for overloads. Takes the parsed-spec list (output of parse_specification/1) plus a name string plus optional arg types (list of type atoms). Returns {:ok, %FunctionSelector{}}, {:error, :not_found}, or {:error, {:ambiguous, [%FunctionSelector{}, ...]}} when multiple matches and no disambiguator. Mirrors viem.getAbiItem. New top-level function on ABI; api() declaration.",
       "scored_at": "2026-05-01",
@@ -965,6 +991,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "codex",
       "acceptance_criteria": [
         "strict: true rejects non-zero high padding on bool/uint/int",
         "strict: true rejects trailing bytes after the declared payload",
@@ -973,6 +1000,10 @@
         "Applied across decode/3, decode_call/3, decode_event/4, decode_error/2",
         "New {:error, {:strict_violation, _}} error shape",
         "README Usage gets a security-note paragraph; CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
       ],
       "body": "Defense-in-depth opt for adversarial-calldata callers. When strict: true, reject: non-zero high padding bits on bool/uint/int (must be zero/sign-extended), trailing bytes after the declared payload (currently silently ignored), string/bytes length prefixes that don't match available data. Default strict: false keeps existing behavior for back-compat. Apply across decode/3, decode_call/3, decode_event/4, decode_error/2. Mirrors eth-abi's strict_mode and viem's strict flag. New errors: {:error, {:strict_violation, _detail}}.",
       "scored_at": "2026-05-01",
@@ -993,6 +1024,7 @@
       "dep_layer": 0,
       "markers": [],
       "depends_on": [],
+      "assignee": "human",
       "acceptance_criteria": [
         "If implemented: encoder + decoder + range validation for fixed<M>x<N> and ufixed<M>x<N>",
         "If implemented: README Support checkboxes flipped to [X]",

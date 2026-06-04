@@ -561,11 +561,9 @@ id = 34
 phase = 5
 bundle = "encode_symmetry"
 milestone = "encode_symmetry"
-status = "pending"
+status = "done"
 title = "ABI.encode_call/3 (selector-prefixed calldata)"
 scores = { d = 2, b = 5, u = 6 }
-scored_at = "2026-05-01"
-body = "Symmetric counterpart to decode_call/3. One-shot method_id/1 ++ encode/2: takes a signature string or %FunctionSelector{} plus the args list, returns the 4-byte-prefixed calldata blob. Mirrors viem.encodeFunctionData / ethers.Interface.encodeFunctionData / eth_abi.encode_abi_with_selector. api() declaration with composes_with: link to decode_call/3. Three clauses: signature-binary, %FunctionSelector{function: nil} (raise ArgumentError), %FunctionSelector{}."
 acceptance_criteria = [
   "encode_call/3 accepts a signature string and returns selector-prefixed calldata",
   "encode_call/3 accepts a %FunctionSelector{} and returns the same blob",
@@ -574,6 +572,16 @@ acceptance_criteria = [
   "README Usage gets an encode-side example matching the existing decode_call/3 example",
   "CHANGELOG entry under [Unreleased]",
 ]
+domains = ["abi", "elixir"]
+assignee = "codex"
+body = "Symmetric counterpart to decode_call/3. One-shot method_id/1 ++ encode/2: takes a signature string or %FunctionSelector{} plus the args list, returns the 4-byte-prefixed calldata blob. Mirrors viem.encodeFunctionData / ethers.Interface.encodeFunctionData / eth_abi.encode_abi_with_selector. api() declaration with composes_with: link to decode_call/3. Three clauses: signature-binary, %FunctionSelector{function: nil} (raise ArgumentError), %FunctionSelector{}."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780595116868-7d1b5522, 576e9c1cd14f101290853219c88f0a7b3b2c0498)."
+delivered_by = "codex"
+verified = true
+started_at = "2026-06-04"
+scored_at = "2026-05-01"
+done_at = "2026-06-04"
+shipped_in = "576e9c1cd14f101290853219c88f0a7b3b2c0498"
 
 [[task]]
 id = 35
@@ -581,6 +589,8 @@ phase = 5
 bundle = "encode_symmetry"
 milestone = "encode_symmetry"
 status = "pending"
+assignee = "grok"
+domains = ["abi", "elixir"]
 title = "ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob)"
 scores = { d = 2, b = 5, u = 4 }
 scored_at = "2026-05-01"
@@ -599,6 +609,8 @@ phase = 5
 bundle = "encode_symmetry"
 milestone = "encode_symmetry"
 status = "pending"
+assignee = "codex"
+domains = ["abi", "elixir"]
 title = "ABI.encode_event_topics/2 (event log topic filter builder)"
 scores = { d = 4, b = 7, u = 7 }
 scored_at = "2026-05-01"
@@ -618,6 +630,8 @@ id = 37
 phase = 5
 bundle = "peer_parity"
 status = "pending"
+assignee = "cursor"
+domains = ["abi", "elixir"]
 title = "ABI.get_abi_item/3 (lookup helper over parse_specification output)"
 scores = { d = 2, b = 3, u = 3 }
 scored_at = "2026-05-01"
@@ -636,6 +650,8 @@ id = 38
 phase = 5
 bundle = "peer_parity"
 status = "pending"
+assignee = "codex"
+domains = ["abi", "elixir"]
 title = "Strict-decode mode (strict: true opt)"
 scores = { d = 5, b = 6, u = 4 }
 scored_at = "2026-05-01"
@@ -655,6 +671,7 @@ id = 39
 phase = 5
 bundle = "peer_parity"
 status = "pending"
+assignee = "human"
 title = "Implement fixed<M>x<N> / ufixed<M>x<N>"
 scores = { d = 8, b = 3, u = 2 }
 scored_at = "2026-05-01"
