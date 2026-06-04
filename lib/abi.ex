@@ -171,6 +171,73 @@ defmodule ABI do
     encode(function_selector, data)
   end
 
+  api(
+    :encode_constructor,
+    "Encodes constructor arguments for contract deployment (no selector prefix).",
+    params: [
+      selector: [
+        kind: :value,
+        description:
+          "A pre-parsed ABI.FunctionSelector with function_type: :constructor (constructors have no name, so no signature-string form is accepted). Typically obtained from parse_specification/1 by finding the :constructor entry."
+      ],
+      data: [
+        kind: :value,
+        description: "List of constructor argument values, in declaration order."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description:
+        "ABI-encoded constructor args with NO 4-byte selector prefix. Concatenate contract_bytecode <> encoded_args to form deploy calldata. Empty-args constructors return the empty binary."
+    },
+    composes_with: [:decode, :parse_specification]
+  )
+
+  @doc """
+  Encodes constructor arguments for contract deployment.
+
+  Constructors have no selector — deploy calldata is `contract_bytecode <>
+  encoded_args`, so this returns the ABI-encoded args with **no** 4-byte prefix
+  (unlike `encode_call/3`). The caller concatenates the bytecode. Mirrors viem's
+  `encodeDeployData`, scoped to just the args blob.
+
+  Only accepts a `%ABI.FunctionSelector{function_type: :constructor}` — pass the
+  `:constructor` entry from `parse_specification/1`. A non-constructor selector
+  raises `ArgumentError`. Round-trips through `decode/3` against the
+  constructor's parsed types.
+
+  ## Examples
+
+      iex> [selector] =
+      ...>   ABI.parse_specification([%{
+      ...>     "type" => "constructor",
+      ...>     "stateMutability" => "nonpayable",
+      ...>     "inputs" => [%{"name" => "supply", "type" => "uint256"}]
+      ...>   }])
+      iex> ABI.encode_constructor(selector, [1000])
+      ...> |> Base.encode16(case: :lower)
+      "00000000000000000000000000000000000000000000000000000000000003e8"
+
+      iex> selector = %ABI.FunctionSelector{function_type: :constructor, types: []}
+      iex> ABI.encode_constructor(selector, [])
+      ""
+
+      iex> selector = %ABI.FunctionSelector{function: "transfer", function_type: :function, types: []}
+      iex> ABI.encode_constructor(selector, [])
+      ** (ArgumentError) encode_constructor/2 requires a constructor selector (function_type: :constructor)
+  """
+  @spec encode_constructor(FunctionSelector.t(), [any()]) :: binary()
+  def encode_constructor(selector, data)
+
+  def encode_constructor(%FunctionSelector{function_type: :constructor} = selector, data) do
+    TypeEncoder.encode_raw([List.to_tuple(data)], [%{type: {:tuple, selector.types}}])
+  end
+
+  def encode_constructor(%FunctionSelector{}, _data) do
+    raise ArgumentError,
+          "encode_constructor/2 requires a constructor selector (function_type: :constructor)"
+  end
+
   api(:method_id, "Returns the 4-byte function selector (method ID) for a function signature.",
     params: [
       signature: [

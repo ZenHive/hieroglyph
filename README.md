@@ -146,6 +146,23 @@ iex> byte_size(packed)
 
 Tuples/structs and nested arrays are not supported by Solidity's packed mode and raise `ArgumentError`. Inside an array, scalar elements are padded to 32 bytes (per the spec) so element boundaries are recoverable; at the top level the encoding is byte-tight with no padding. Standard ABI encoding (`ABI.encode/2`) is the inverse — use `encode/2` for transaction calldata, `encode_packed/2` for hashing inputs.
 
+### Deploy encoding (constructor arguments)
+
+`ABI.encode_constructor/2` encodes constructor arguments for a contract deployment. Constructors have no selector, so it returns the ABI-encoded args with **no** 4-byte prefix — the deploy calldata is `contract_bytecode <> encoded_args`. It only accepts a `%ABI.FunctionSelector{function_type: :constructor}` (the `:constructor` entry from `parse_specification/1`); a non-constructor selector raises `ArgumentError`. Mirrors viem's `encodeDeployData`, scoped to just the args blob.
+
+```elixir
+iex> [constructor] =
+...>   ABI.parse_specification([%{
+...>     "type" => "constructor",
+...>     "stateMutability" => "nonpayable",
+...>     "inputs" => [%{"name" => "supply", "type" => "uint256"}]
+...>   }])
+iex> encoded_args = ABI.encode_constructor(constructor, [1000])
+iex> deploy_calldata = contract_bytecode <> encoded_args
+```
+
+An empty-args constructor returns `<<>>`. The args round-trip through `ABI.decode/3` against the constructor's parsed types.
+
 ### Parsing a JSON ABI file
 
 Full contract ABIs from `solc` / Foundry / Hardhat can be fed straight into `ABI.parse_specification/1` after decoding the JSON. Non-function entries (constructors) are skipped; function, fallback, receive, event, and custom-error entries are all returned as `ABI.FunctionSelector` structs.

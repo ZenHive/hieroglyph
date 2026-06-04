@@ -105,6 +105,81 @@ defmodule ABITest do
     end
   end
 
+  describe "encode_constructor/2" do
+    test "returns selector-less ABI-encoded args for a constructor selector" do
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "constructor",
+            "stateMutability" => "nonpayable",
+            "inputs" => [%{"name" => "supply", "type" => "uint256"}]
+          }
+        ])
+
+      encoded = ABI.encode_constructor(selector, [1000])
+
+      assert encoded == <<1000::256>>
+      assert byte_size(encoded) == 32
+    end
+
+    test "round-trips through decode/3 against the constructor's parsed types" do
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "constructor",
+            "stateMutability" => "nonpayable",
+            "inputs" => [
+              %{"name" => "owner", "type" => "address"},
+              %{"name" => "supply", "type" => "uint256"},
+              %{"name" => "symbol", "type" => "string"}
+            ]
+          }
+        ])
+
+      args = [<<1::160>>, 1_000_000, "ABI"]
+
+      assert ABI.decode(selector, ABI.encode_constructor(selector, args)) == args
+    end
+
+    test "empty-args constructor returns the empty binary" do
+      selector = %ABI.FunctionSelector{function_type: :constructor, types: []}
+
+      assert ABI.encode_constructor(selector, []) == <<>>
+    end
+
+    test "accepts a constructor selector even when a stray function name is present" do
+      selector = %ABI.FunctionSelector{
+        function: "ignored",
+        function_type: :constructor,
+        types: [%{type: {:uint, 256}}]
+      }
+
+      assert ABI.encode_constructor(selector, [7]) == <<7::256>>
+    end
+
+    test "raises ArgumentError for a non-constructor selector" do
+      selector = %ABI.FunctionSelector{
+        function: "transfer",
+        function_type: :function,
+        types: []
+      }
+
+      message =
+        "encode_constructor/2 requires a constructor selector (function_type: :constructor)"
+
+      assert_raise ArgumentError, message, fn ->
+        ABI.encode_constructor(selector, [])
+      end
+    end
+
+    test "api declaration is present" do
+      entry = Enum.find(ABI.__api__(), &(&1.name == :encode_constructor))
+
+      assert entry
+      assert entry.hints.composes_with == [:decode, :parse_specification]
+    end
+  end
+
   describe "decode_call/3" do
     test "round-trips through encode/2 for mixed static+dynamic args" do
       sig = "swap(address,uint256,bytes)"
