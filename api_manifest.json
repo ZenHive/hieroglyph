@@ -98,12 +98,12 @@
           "hints": {
             "description": "Decodes selector-prefixed revert data against a list of known custom-error definitions.",
             "params": {
-              "error_definitions": {
-                "description": "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload.",
-                "kind": "value"
-              },
               "revert_data": {
                 "description": "Selector-prefixed revert payload (4-byte error ID + ABI-encoded args), e.g. the data field returned by a Solidity 0.8.4+ custom-error revert.",
+                "kind": "value"
+              },
+              "error_definitions": {
+                "description": "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload.",
                 "kind": "value"
               }
             },
@@ -230,6 +230,38 @@
           }
         },
         {
+          "arity": 3,
+          "name": "encode_call",
+          "description": "Encodes args into selector-prefixed calldata for a named function.\n\nThis is the encode-side counterpart to `decode_call/3`: pass a signature or\n`ABI.FunctionSelector`, plus the argument list, and receive the full\ntransaction calldata blob.\n\n## Examples\n\n    iex> ABI.encode_call(\"transfer(address,uint256)\", [<<1::160>>, 100])\n    ...> |> Base.encode16(case: :lower)\n    \"a9059cbb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064\"\n\n    iex> ABI.encode_call(%ABI.FunctionSelector{function: nil, types: []}, [])\n    ** (ArgumentError) encode_call/3 requires a function name; use encode/2 for payload-only data",
+          "signature": "encode_call(signature_or_selector, data, opts \\\\ [])",
+          "spec": "encode_call(binary() | ABI.FunctionSelector.t(), [any()], keyword()) :: binary()",
+          "defaults": 1,
+          "hints": {
+            "description": "Encodes args into selector-prefixed calldata for a named function.",
+            "params": {
+              "data": {
+                "description": "List of values to encode, in argument order.",
+                "kind": "value"
+              },
+              "opts": {
+                "description": "Reserved keyword options; currently unused.",
+                "kind": "value"
+              },
+              "signature_or_selector": {
+                "description": "Either a raw signature string or a pre-parsed ABI.FunctionSelector struct.",
+                "kind": "value"
+              }
+            },
+            "returns": {
+              "type": "binary",
+              "description": "Full calldata bytes: 4-byte method ID followed by ABI-encoded args."
+            },
+            "composes_with": [
+              "decode_call"
+            ]
+          }
+        },
+        {
           "arity": 2,
           "name": "encode_packed",
           "description": "Encodes a list of values using Solidity's\n[non-standard packed mode](https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode).\n\nUsed primarily for `keccak256(abi.encodePacked(...))` Merkle leaves and\nsignature schemes; never used for actual function calls (the spec defines\nno decoding function — encoding is ambiguous with multiple dynamic args).\n\nTuple/struct values and nested arrays raise `ArgumentError` — the spec\ndoes not define their packed encoding.\n\n> #### Warning {: .warning}\n>\n> If both `a` and `b` are dynamic types, `abi.encodePacked(a, b)` is\n> ambiguous: `abi.encodePacked(\"a\", \"bc\") == abi.encodePacked(\"ab\", \"c\")`.\n> Do not feed multiple dynamic args into packed-mode signature schemes\n> without controlling for that collision.\n\n## Examples\n\n    iex> ABI.encode_packed(\"foo(int16,bytes1,uint16,string)\", [-1, <<0x42>>, 3, \"Hello, world!\"])\n    ...> |> Base.encode16(case: :lower)\n    \"ffff42000348656c6c6f2c20776f726c6421\"\n\n    iex> ABI.encode_packed(\"leaf(address,uint256)\", [<<1::160>>, 100])\n    ...> |> Base.encode16(case: :lower)\n    \"00000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064\"\n\n    iex> ABI.encode_packed(\"foo(uint8[])\", [[1, 2, 3]])\n    ...> |> Base.encode16(case: :lower)\n    \"000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003\"",
@@ -329,7 +361,7 @@
         }
       ],
       "module": "ABI",
-      "description": "Documentation for ABI, the function interface language for Solidity.\nGenerally, the ABI describes how to take binary Ethereum and transform\nit to or from types that Solidity understands.\n\n## Agent Discovery\n\nUse `ABI.describe/0..2` for progressive API discovery:\n\n    ABI.describe()                    # Level 1: all annotated modules\n    ABI.describe(:abi)                # Level 2: functions in this module\n    ABI.describe(:abi, :encode)       # Level 3: full contract for encode/2\n\nA static `api_manifest.json` covering every public function is emitted by\n`mix descripex.manifest --app hieroglyph` (a dedicated `mix\nhieroglyph.manifest` wrapper ships in 1.2.0 alongside Phase 3 of the agent\neconomy work — see CHANGELOG). Downstream consumers may diff that manifest\nacross hieroglyph version bumps as a contract-stability check.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `parse_specification` | 1 | Parses an ABI specification document into a list of ABI.FunctionSelector structs. | `doc: value` |\n| `event_signature` | 1 | Returns the 32-byte topic hash for an event signature. | `function_signature: value` |\n| `decode_event` | 4 | Decodes an event from raw log data and indexed topics. | `function_signature: value`, `data: value`, `topics: value`, `opts: value` |\n| `encode_packed` | 2 | Encodes values using Solidity's non-standard packed mode (abi.encodePacked). | `signature_or_selector: value`, `values: value` |\n| `decode_error` | 2 | Decodes selector-prefixed revert data against a list of known custom-error definitions. | `revert_data: value`, `error_definitions: value` |\n| `decode_call` | 3 | Decodes selector-prefixed calldata (4-byte method ID + ABI-encoded args) and verifies the selector matches. | `signature_or_selector: value`, `calldata: value`, `opts: value` |\n| `decode` | 3 | Decodes the given data based on the function or tuple signature. | `function_signature: value`, `data: value`, `opts: value` |\n| `method_id` | 1 | Returns the 4-byte function selector (method ID) for a function signature. | `signature: value` |\n| `encode` | 2 | Encodes the given data into the function signature or tuple signature. | `function_signature: value`, `data: value` |",
+      "description": "Documentation for ABI, the function interface language for Solidity.\nGenerally, the ABI describes how to take binary Ethereum and transform\nit to or from types that Solidity understands.\n\n## Agent Discovery\n\nUse `ABI.describe/0..2` for progressive API discovery:\n\n    ABI.describe()                    # Level 1: all annotated modules\n    ABI.describe(:abi)                # Level 2: functions in this module\n    ABI.describe(:abi, :encode)       # Level 3: full contract for encode/2\n\nA static `api_manifest.json` covering every public function is emitted by\n`mix descripex.manifest --app hieroglyph` (a dedicated `mix\nhieroglyph.manifest` wrapper ships in 1.2.0 alongside Phase 3 of the agent\neconomy work — see CHANGELOG). Downstream consumers may diff that manifest\nacross hieroglyph version bumps as a contract-stability check.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `parse_specification` | 1 | Parses an ABI specification document into a list of ABI.FunctionSelector structs. | `doc: value` |\n| `event_signature` | 1 | Returns the 32-byte topic hash for an event signature. | `function_signature: value` |\n| `decode_event` | 4 | Decodes an event from raw log data and indexed topics. | `function_signature: value`, `data: value`, `topics: value`, `opts: value` |\n| `encode_packed` | 2 | Encodes values using Solidity's non-standard packed mode (abi.encodePacked). | `signature_or_selector: value`, `values: value` |\n| `decode_error` | 2 | Decodes selector-prefixed revert data against a list of known custom-error definitions. | `revert_data: value`, `error_definitions: value` |\n| `decode_call` | 3 | Decodes selector-prefixed calldata (4-byte method ID + ABI-encoded args) and verifies the selector matches. | `signature_or_selector: value`, `calldata: value`, `opts: value` |\n| `decode` | 3 | Decodes the given data based on the function or tuple signature. | `function_signature: value`, `data: value`, `opts: value` |\n| `method_id` | 1 | Returns the 4-byte function selector (method ID) for a function signature. | `signature: value` |\n| `encode_call` | 3 | Encodes args into selector-prefixed calldata for a named function. | `signature_or_selector: value`, `data: value`, `opts: value` |\n| `encode` | 2 | Encodes the given data into the function signature or tuple signature. | `function_signature: value`, `data: value` |",
       "namespace": "/abi"
     },
     {
@@ -380,14 +412,14 @@
                 "description": "Optional keyword list. Supports check_event_signature: false to skip topics[0] verification (anonymous events or pre-stripped topics)",
                 "kind": "value"
               },
+              "function_selector": {
+                "description": "Pre-parsed FunctionSelector with type metadata including indexed flags",
+                "kind": "value"
+              },
               "topics": {
                 "description": "List of topic binaries (each 32 bytes). topics[0] is the event signature hash unless check_event_signature is false",
                 "source": "eth_getLogs",
                 "kind": "exchange_data"
-              },
-              "function_selector": {
-                "description": "Pre-parsed FunctionSelector with type metadata including indexed flags",
-                "kind": "value"
               }
             },
             "errors": [
@@ -909,5 +941,5 @@
       "namespace": "/math"
     }
   ],
-  "generated_at": "2026-05-01T11:07:36.918440Z"
+  "generated_at": "2026-06-04T17:49:52.523667Z"
 }

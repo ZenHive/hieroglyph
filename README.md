@@ -89,10 +89,14 @@ iex> ABI.method_id("deposit()") |> Base.encode16(case: :lower)
 "d0e30db0"
 ```
 
-`ABI.decode_call/3` is the symmetric counterpart to `ABI.encode/2` for selector-prefixed calldata: it strips and verifies the 4-byte prefix, then decodes the payload. `ABI.decode/3` remains payload-only — use `decode_call/3` when the input still has its method-ID prefix (raw transaction `data` from a node), and `decode/3` for return values or selector-routed payloads.
+`ABI.encode_call/3` and `ABI.decode_call/3` are the selector-prefixed calldata helpers: `encode_call/3` builds the 4-byte-prefixed blob, while `decode_call/3` strips and verifies the 4-byte prefix before decoding the payload. `ABI.decode/3` remains payload-only — use `decode_call/3` when the input still has its method-ID prefix (raw transaction `data` from a node), and `decode/3` for return values or selector-routed payloads.
 
 ```elixir
-iex> calldata = ABI.encode("transfer(address,uint256)", [<<1::160>>, 100])
+iex> ABI.encode_call("transfer(address,uint256)", [<<1::160>>, 100])
+...> |> Base.encode16(case: :lower)
+"a9059cbb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064"
+
+iex> calldata = ABI.encode_call("transfer(address,uint256)", [<<1::160>>, 100])
 iex> ABI.decode_call("transfer(address,uint256)", calldata)
 {:ok, [<<1::160>>, 100]}
 

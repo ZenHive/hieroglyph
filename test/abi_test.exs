@@ -67,6 +67,44 @@ defmodule ABITest do
     end
   end
 
+  describe "encode_call/3" do
+    test "accepts a signature string and returns selector-prefixed calldata" do
+      expected =
+        ~h[0xa9059cbb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064]
+
+      assert ABI.encode_call("transfer(address,uint256)", [<<1::160>>, 100], []) == expected
+    end
+
+    test "accepts a FunctionSelector struct and returns the same blob as a signature string" do
+      selector = %ABI.FunctionSelector{
+        function: "transfer",
+        types: [%{type: :address}, %{type: {:uint, 256}}]
+      }
+
+      assert ABI.encode_call(selector, [<<1::160>>, 100], []) ==
+               ABI.encode_call("transfer(address,uint256)", [<<1::160>>, 100], [])
+    end
+
+    test "raises ArgumentError for FunctionSelector structs without a function name" do
+      selector = %ABI.FunctionSelector{
+        function: nil,
+        types: [%{type: {:uint, 256}}]
+      }
+
+      message = "encode_call/3 requires a function name; use encode/2 for payload-only data"
+
+      assert_raise ArgumentError, message, fn ->
+        ABI.encode_call(selector, [100], [])
+      end
+    end
+
+    test "api declaration composes with decode_call/3" do
+      entry = Enum.find(ABI.__api__(), &(&1.name == :encode_call))
+
+      assert entry.hints.composes_with == [:decode_call]
+    end
+  end
+
   describe "decode_call/3" do
     test "round-trips through encode/2 for mixed static+dynamic args" do
       sig = "swap(address,uint256,bytes)"

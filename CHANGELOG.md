@@ -1,5 +1,7 @@
 # Unreleased
 
+* **New API — `ABI.encode_call/3`.** Encode-side counterpart to `decode_call/3` for selector-prefixed calldata. Accepts a signature string or pre-parsed `FunctionSelector` plus args, returns the 4-byte method ID followed by the ABI-encoded payload, and raises `ArgumentError` for `%FunctionSelector{function: nil}` so payload-only callers keep using `encode/2`. The `api()` declaration composes with `decode_call/3`, and README Usage now shows the encode-side calldata example beside the existing decode example.
+
 # 1.4.0 - 2026-05-01
 
 ## Atom-creation hardening on `decode_structs: true` path

@@ -116,6 +116,61 @@ defmodule ABI do
     TypeEncoder.encode(data, function_selector)
   end
 
+  api(:encode_call, "Encodes args into selector-prefixed calldata for a named function.",
+    params: [
+      signature_or_selector: [
+        kind: :value,
+        description: "Either a raw signature string or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      data: [
+        kind: :value,
+        description: "List of values to encode, in argument order."
+      ],
+      opts: [
+        kind: :value,
+        description: "Reserved keyword options; currently unused."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description: "Full calldata bytes: 4-byte method ID followed by ABI-encoded args."
+    },
+    composes_with: [:decode_call]
+  )
+
+  @doc """
+  Encodes args into selector-prefixed calldata for a named function.
+
+  This is the encode-side counterpart to `decode_call/3`: pass a signature or
+  `ABI.FunctionSelector`, plus the argument list, and receive the full
+  transaction calldata blob.
+
+  ## Examples
+
+      iex> ABI.encode_call("transfer(address,uint256)", [<<1::160>>, 100])
+      ...> |> Base.encode16(case: :lower)
+      "a9059cbb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064"
+
+      iex> ABI.encode_call(%ABI.FunctionSelector{function: nil, types: []}, [])
+      ** (ArgumentError) encode_call/3 requires a function name; use encode/2 for payload-only data
+  """
+  @spec encode_call(binary() | FunctionSelector.t(), [any()], keyword()) ::
+          binary()
+  def encode_call(signature_or_selector, data, opts \\ [])
+
+  def encode_call(signature, data, opts) when is_binary(signature) do
+    encode_call(FunctionSelector.decode(signature), data, opts)
+  end
+
+  def encode_call(%FunctionSelector{function: nil}, _data, _opts) do
+    raise ArgumentError,
+          "encode_call/3 requires a function name; use encode/2 for payload-only data"
+  end
+
+  def encode_call(%FunctionSelector{} = function_selector, data, _opts) do
+    encode(function_selector, data)
+  end
+
   api(:method_id, "Returns the 4-byte function selector (method ID) for a function signature.",
     params: [
       signature: [
