@@ -1,0 +1,668 @@
+schema_version = 2
+project = "hieroglyph"
+default_branch = "main"
+vision = "Production-grade Solidity ABI encoder/decoder for Elixir, matching feature parity with eth-abi (Python), ethers/viem (JS), and alloy (Rust)."
+
+[focus]
+phase = 5
+
+# ---------------------------------------------------------------------------
+# Phases
+# ---------------------------------------------------------------------------
+
+[phases.1]
+name = "Upstream & Fork Bug Fixes"
+order = 1
+status = "done"
+
+[phases.2]
+name = "Agent Economy (Descripex)"
+order = 2
+status = "done"
+
+[phases.3]
+name = "Public Surface & Quality Debt"
+order = 3
+status = "done"
+
+[phases.4]
+name = "DeFi Fixtures & Property Suite"
+order = 4
+status = "done"
+
+[phases.5]
+name = "Peer-Library Parity"
+order = 5
+status = "in_progress"
+
+# ---------------------------------------------------------------------------
+# Bundles
+# ---------------------------------------------------------------------------
+
+[bundles.bugs]
+phase = 1
+order = 1
+description = "Correctness fixes carried over the exthereum/abi fork — indexed-event decoding, type rejection, lexer shadowing, overflow guards, NUL truncation."
+
+[bundles.agent_economy]
+phase = 2
+order = 1
+description = "Descripex annotation of the public surface so it is discoverable via __api__/0, ABI.describe/0..2, and a static api_manifest.json. Contract-stability artifact for the cartouche/onchain downstream chain."
+
+[bundles.public_surface]
+phase = 3
+order = 1
+description = "1.2.0 Public Surface Pass — decode_event/4 error contract narrowed, encode_bytes/1 → defp, new decode_error/2 and encode_packed/2."
+
+[bundles.tests_recent]
+phase = 3
+order = 2
+description = "Tests for recently-added features — map-input encoder, round-trip property suite, error-path coverage."
+
+[bundles.typespecs_docs]
+phase = 3
+order = 3
+description = "Typespec/doc gap closure, README refresh, padding-helper extraction, Credo strict cleanup, predicate rename, address-payable note."
+
+[bundles.hardening]
+phase = 3
+order = 4
+description = "Security hardening of opt-in decode paths — atom-creation bound on decode_structs: true."
+
+[bundles.discovery]
+phase = 3
+order = 5
+description = "Discovery / research exercises that surface candidate tasks — defi-skills action-surface mining."
+
+[bundles.defi_fixtures]
+phase = 4
+order = 1
+description = "DeFi Real-World Fixtures — golden calldata vectors and function-selector golden vectors captured from defi-skills build across 13 protocols."
+
+[bundles.property_suite]
+phase = 4
+order = 2
+description = "Property Suite Expansion — tuple[] round-trips, empty bytes/tuple[] in struct fields, multiple top-level struct args, deep struct nesting."
+
+[bundles.encode_symmetry]
+phase = 5
+order = 1
+description = "Encode-Side Symmetry Pass — encode_call/3, encode_error/3, encode_event_topics/2: the encode-side counterparts to the already-shipped decode_call/3, decode_error/2, decode_event/4. Ships as one minor bump."
+
+[bundles.peer_parity]
+phase = 5
+order = 2
+description = "Peer-library parity items beyond the encode-side symmetry trio — decode_call/method_id, function type, get_abi_item lookup helper, strict-decode mode, deferred fixed/ufixed."
+
+# ---------------------------------------------------------------------------
+# Milestones
+# ---------------------------------------------------------------------------
+
+[milestones.encode_symmetry]
+name = "Encode-Side Symmetry"
+order = 1
+status = "active"
+target_version = "1.5.0"
+description = "Proves consumers building transactions need the encode-side counterparts (encode_call / encode_error / encode_event_topics) to match the decode APIs already shipped, rather than hand-assembling selector-prefixed calldata."
+
+# ===========================================================================
+# Phase 1 — Bugs
+# ===========================================================================
+
+[[task]]
+id = 1
+phase = 1
+bundle = "bugs"
+status = "done"
+title = "Indexed reference-type event parameters decoded wrong (upstream #53)"
+markers = ["bug"]
+scores = { d = 4, b = 7, u = 6 }
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "lib/abi/event.ex:146-172 decoded indexed reference-type event params incorrectly. Indexed complex types are stored as keccak256 hashes in topics, not as their plain encoding."
+implemented = "Indexed reference-type params (all arrays — fixed or dynamic — plus tuples, string, bytes) now return {:indexed_hash, <<32 bytes>>} via a local reference_type?/1 predicate matching the Solidity spec's 'all complex types' event-indexing rule (broader than FunctionSelector.dynamic?/1's head/tail rule). Static value-type indexed params unchanged. Filed upstream as #53; awaiting maintainer response."
+
+[[task]]
+id = 2
+phase = 1
+bundle = "bugs"
+status = "done"
+title = "fixed/ufixed/function parse but cannot encode + typespec gaps (upstream #54)"
+markers = ["bug"]
+scores = { d = 3, b = 6, u = 6 }
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "lib/abi/parser.ex and function_selector.ex: fixed/ufixed/function types parsed but had no encoder, and @type type was missing {:bytes, N}."
+implemented = "Parse-time rejection of :function, {:fixed, M, N}, {:ufixed, M, N} (incl. nested in arrays/tuples) with an ArgumentError linking upstream #54; {:bytes, pos_integer()} added to @type type. NOTE: the :function rejection was later lifted in 1.3.0 (see task 33). fixed/ufixed stay rejected per Solidity's own incomplete support. Awaiting upstream response."
+
+[[task]]
+id = 3
+phase = 1
+bundle = "bugs"
+status = "done"
+title = "Lexer 'x' terminal shadowed by LETTERS rule (sub-bug of #54)"
+markers = ["bug"]
+scores = { d = 4, b = 4, u = 4 }
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "src/ethereum_abi_lexer.xrl / ethereum_abi_parser.yrl: a single 'x' (the separator in fixedMxN) was shadowed by the {LETTERS} rule, so the explicit-M/N fixed forms never lexed correctly."
+implemented = "Dedicated fixed_typename / ufixed_typename lexer terminals so 'x' only separates in fixed/ufixed contexts; 'x' rule moved before {LETTERS} so single 'x' lexes as the terminal; parser gains identifier_part -> 'x' | fixed_typename | ufixed_typename so single-char 'x' and keyword forms still work as names. Explicit M/N forms route through reject_unsupported!/1 with the #54 ArgumentError. Shift/reduce count 1 → 3 (new conflicts resolve as shift, desired; documented inline). Upstream filing deferred to a future batched issue."
+
+[[task]]
+id = 4
+phase = 1
+bundle = "bugs"
+status = "done"
+title = "dynamic?/1 crashes on zero-length fixed array"
+markers = ["bug"]
+scores = { d = 1, b = 4, u = 4 }
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "lib/abi/function_selector.ex:484: dynamic?/1 had no clause for {:array, _type, 0} and crashed on T[0]."
+implemented = "One-line fix: def dynamic?({:array, _type, 0}), do: false. Encoder/decoder already handled zero-length arrays correctly — verified by extending roundtrip_property_test.exs's fixed-array length domain to 0..3. Pre-existing upstream; not yet filed (candidate to fold with the lexer fix into a single PR)."
+
+[[task]]
+id = 5
+phase = 1
+bundle = "bugs"
+status = "done"
+title = "encode_int/2 byte-vs-bit overflow guard rejected ALL int<N> (upstream #55)"
+markers = ["bug"]
+scores = { d = 3, b = 7, u = 6 }
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "lib/abi/type_encoder.ex:382-401: the overflow guard compared byte_size(significant_bytes) against desired_size_bytes - 1 (= 0 for int8), so even encoding 0 raised; most non-trivial int16/int32 values failed too."
+implemented = "Replaced the byte-vs-bit guard with an up-front numeric range check against 2^(N-1), so the encoder accepts the full signed range -2^(N-1)..2^(N-1)-1 for every int<N>. The pre-existing 'int overflow raises data overflow' test passed only because the encoder was broken for all values; tightened to assert in-range values encode AND boundary cases (128, -129) raise. Surfaced by the round-trip property suite on first run. Filed upstream #55; awaiting response."
+
+[[task]]
+id = 6
+phase = 1
+bundle = "bugs"
+status = "done"
+title = ":string decode silently truncated at first NUL byte"
+markers = ["bug"]
+scores = { d = 2, b = 6, u = 6 }
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "lib/abi/type_decoder.ex:295-298: the :string decode clause split the decoded binary at the first <<0>> via nul_terminate_string/1, treating Solidity strings as C strings. Solidity strings are length-prefixed UTF-8 and may legally contain NUL codepoints. Affects ABI.decode/3, decode_call/3, decode_event/4, TypeDecoder.decode/3."
+implemented = "Removed the nul_terminate_string/1 helper entirely; :string decode now delegates straight to decode_bytes(rest, length, :right) (Math.unpad already returns the right length). Surfaced by the mixed-element tuple[] property (task 28). Pre-existing upstream since 2018 (bdceb719). Three regression tests added (leading/embedded/all-NUL). Upstream filing pending — batch with the lexer x sub-bug."
+
+# ===========================================================================
+# Phase 2 — Agent Economy
+# ===========================================================================
+
+[[task]]
+id = 7
+phase = 2
+bundle = "agent_economy"
+status = "done"
+title = "Descripex on ABI top-level"
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Annotate the public ABI module so its surface is discoverable via __api__/0 and progressive disclosure. Add {:descripex, ~> 0.6} as a runtime dep."
+implemented = "Added :descripex runtime dep; annotated the seven public functions in lib/abi.ex (encode/2, method_id/1, decode/3, decode_call/3, decode_event/4, event_signature/1, parse_specification/1) with api() under namespace /abi; wired use Descripex.Discoverable, modules: [ABI]. Verified: ABI.describe/0..2 returns hints, ABI.__api__() lists all seven, mix descripex.manifest emits 11 entries (7 annotated + 4 Discoverable bookkeeping)."
+
+[[task]]
+id = 8
+phase = 2
+bundle = "agent_economy"
+status = "done"
+title = "Descripex on remaining public modules"
+scores = { d = 4, b = 6, u = 5 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Extend api() annotations to the remaining public modules so the full surface is declared and the hint-rot cross-check can enforce coverage."
+implemented = "Annotated all 18 documented public functions across ABI.Event (/selector), ABI.FunctionSelector (/selector — 3 @doc false internals excluded), ABI.TypeEncoder (/codec — encode_bytes/1 excluded), ABI.TypeDecoder (/codec), ABI.Math (/math); wired composes_with: across natural pairings; extended Discoverable to all six modules. Manifest now emits 25 user-declared api() entries + 4 framework exports."
+
+[[task]]
+id = 9
+phase = 2
+bundle = "agent_economy"
+status = "done"
+title = "Custom manifest task + hint-rot validation test"
+scores = { d = 2, b = 5, u = 6 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Add a project manifest task and a test that prevents hint rot by asserting every non-framework export is api()-declared."
+implemented = "Added lib/mix/tasks/hieroglyph.manifest.ex (mix hieroglyph.manifest [path], defaults to api_manifest.json) and test/abi/agent_economy_test.exs (17 tests; load-bearing cross-check walks module_info(:exports) and asserts every non-framework export is api()-declared). Documented in README 'Agent Integration'; CLAUDE.md 'Layout' gets the manifest task row."
+
+# ===========================================================================
+# Phase 3 — Public Surface & Quality Debt
+# ===========================================================================
+
+[[task]]
+id = 10
+phase = 3
+bundle = "public_surface"
+status = "done"
+title = "decode_event/4 error contract narrowed (bugfix-honoring-typespec)"
+markers = ["bug"]
+scores = { d = 3, b = 5, u = 5 }
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "lib/abi/event.ex: the @spec declared {:error, term()} but the runtime path raised on malformed payloads and returned string-formatted signature errors."
+implemented = "Wrapped the decode_raw-driven payload decode in try/rescue → {:error, {:malformed_data, _}}; tightened verify_event_signature/2 to atom-tagged {:error, {:event_signature_mismatch, %{expected, got}}}. Added @type ABI.Event.decode_error/0 and narrowed decode_event/4's @spec to the closed set; api() carries an errors: block. Not a meaningful breaking change (prior contract was unreachable for malformed payloads). Pair upstream with task 11 as one bug/hygiene PR."
+
+[[task]]
+id = 11
+phase = 3
+bundle = "public_surface"
+status = "done"
+title = "encode_bytes/1 flipped to defp"
+markers = ["bug"]
+scores = { d = 1, b = 3, u = 3 }
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "lib/abi/type_encoder.ex: encode_bytes/1 was accidentally public (def + @doc false) with zero external callers."
+implemented = "Flipped def → defp and dropped the now-redundant @doc false. Already @doc false, zero callers across the monorepo, already excluded from the hint-rot test — manifest user-declared count unchanged. Pair upstream with task 10."
+
+[[task]]
+id = 12
+phase = 3
+bundle = "public_surface"
+status = "done"
+title = "ABI.decode_error/2 helper (Solidity 0.8.4+ custom errors)"
+scores = { d = 4, b = 6, u = 7 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Decode Solidity 0.8.4+ custom-error revert data by matching the first-4-byte selector against a list of known error definitions, mirroring decode_call/3's contract."
+implemented = "Matches the 4-byte selector against a list of error definitions (signature strings or pre-parsed FunctionSelector structs, mixed accepted), decodes the first match. Returns {:ok, %{error: name, args: [...]}}, {:error, :no_match}, or {:error, :calldata_too_short}. Malformed payload after a selector match still raises (same as decode/3). Pair upstream with task 13 as one feature PR."
+
+[[task]]
+id = 13
+phase = 3
+bundle = "public_surface"
+status = "done"
+title = "ABI.encode_packed/2 support"
+scores = { d = 7, b = 8, u = 6 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Solidity non-standard packed encoding for Merkle airdrop leaves and keccak256(abi.encodePacked(...)) schemes."
+implemented = "Per spec: types <32 bytes concatenate tight (no padding); dynamic types (bytes, string) inline as raw payload (no length prefix); array elements pad to 32 bytes (or 32-byte multiples for string/bytes); tuples/structs and nested arrays raise ArgumentError with a spec link. Polymorphic first arg like encode/2. Cross-checked against the canonical spec example and a Merkle-leaf golden vector (address ++ uint256 → 52 bytes). Pair upstream with task 12."
+
+[[task]]
+id = 14
+phase = 3
+bundle = "tests_recent"
+status = "done"
+title = "Map-input encoder tests"
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "type_encoder.ex data_to_list/2 map branch (struct/map input) lacked explicit coverage."
+implemented = "7 test cases + a demonstrative doctest in test/abi/type_encoder_test.exs covering atom keys, string keys, camelCase→snake_case resolution, string-over-atom priority, integer values in nested named-struct maps, and the two raise paths."
+
+[[task]]
+id = 15
+phase = 3
+bundle = "tests_recent"
+status = "done"
+title = "Round-trip property test suite"
+scores = { d = 3, b = 7, u = 7 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "Property-based decode(encode(x)) == x coverage for every type in FunctionSelector.@type type/0."
+implemented = "Added test/abi/roundtrip_property_test.exs using stream_data — per-type properties for uint/int/address/bool/string/bytes/bytesN, fixed and dynamic arrays, mixed static+dynamic tuples, plus a recursive composite property (depth ≤ 3) for nested {:tuple, [{:array, ...}]}. The composite property surfaced the encode_int bug (task 5) on first run."
+
+[[task]]
+id = 16
+phase = 3
+bundle = "tests_recent"
+status = "done"
+title = "Error-path tests"
+scores = { d = 3, b = 5, u = 4 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "11 error branches across encoder/decoder/function-selector were untested."
+implemented = "Regression coverage for bool/bytes type mismatches, int/uint overflow, trailing decode data, unsupported type atoms across encoder/decoder/function-selector, and event-signature / topics-length mismatches in decode_event/4."
+
+[[task]]
+id = 17
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "Fill @spec and @doc gaps"
+scores = { d = 2, b = 5, u = 3 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "Many public functions lacked @spec/@doc, dragging Doctor coverage down."
+implemented = "Added specs for every previously-undeclared public function across ABI, ABI.Event, ABI.TypeDecoder, ABI.TypeEncoder, ABI.FunctionSelector; added docs for TypeDecoder.tuple_value/3 and decode_bytes/3. Doctor spec coverage 42% → 88%, doc coverage 88% → 96%."
+
+[[task]]
+id = 18
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "Refresh README"
+markers = ["docs"]
+scores = { d = 2, b = 6, u = 6 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "README carried a stale tuple caveat, wrong encode/2 arity, wrong bytes<M> marker, and dead solidity.readthedocs.io links."
+implemented = "Dropped stale tuple caveat, corrected ABI.encode/2 arity and bytes<M> support marker, migrated links to docs.soliditylang.org, added runnable examples for parse_specification/1, Event.decode_event/4, and map/struct input to encode/2."
+
+[[task]]
+id = 19
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "Extract padding helpers into ABI.Math"
+scores = { d = 3, b = 4, u = 3 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "Encoder and decoder each duplicated the 32-byte byte-domain padding formula (three TODO: add to ABI.Math comments)."
+implemented = "Added ABI.Math.pad/4 and unpad/3; TypeEncoder and TypeDecoder now delegate. Resolved the three TODOs. Zero behavior change."
+
+[[task]]
+id = 20
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "Credo strict cleanup (AliasUsage + MaxLineLength + ParameterPatternMatching + Nesting)"
+scores = { d = 2, b = 3, u = 3 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "mix credo --strict reported 51 issues."
+implemented = "Drove 51 → 0. Top-of-module aliases across ABI, Event, FunctionSelector, Parser, TypeDecoder, TypeEncoder, Hex; wrapped long specs; refactored the Enum.reduce tuple-encoder into encode_tuple_element/2; flipped three record = %{} heads; extracted verify_event_signature/2 and fetch_named_field/2 + fetch_by_name/2 to drop nesting."
+
+[[task]]
+id = 21
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "Rename ABI.FunctionSelector.is_dynamic?/1 → dynamic?/1"
+scores = { d = 2, b = 3, u = 2 }
+scored_at = "2026-04-24"
+done_at = "2026-04-24"
+shipped_in = "1.0.0"
+body = "Credo PredicateFunctionNames flagged is_dynamic?/1."
+implemented = "Renamed all 9 clause heads, the @spec, 2 recursive self-calls, and 3 private call-sites in TypeDecoder/TypeEncoder. No deprecation shim — @doc false since 2017, zero external callers, and a defdelegate shim would recreate the violation."
+
+[[task]]
+id = 22
+phase = 3
+bundle = "typespecs_docs"
+status = "done"
+title = "address payable vs address doc note"
+markers = ["docs"]
+scores = { d = 1, b = 2, u = 2 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "Document that address payable collapses to :address."
+implemented = "Added a @typedoc to FunctionSelector.@type type/0 clarifying that address payable collapses to :address (ABI JSON only emits 'address'; on-the-wire encoding identical; payability is a state_mutability property, not a type variant)."
+
+[[task]]
+id = 23
+phase = 3
+bundle = "hardening"
+status = "done"
+title = "Bound atom creation in decode_structs: true path"
+markers = ["security"]
+scores = { d = 3, b = 4, u = 3 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.4.0"
+body = "DoS surface: ABI.TypeDecoder.tuple_value/3 and TypeEncoder.fetch_by_name/2 created atoms from contract-supplied field names (gated by sobelow_skip on a 'trusted ABI metadata' assumption that breaks for arbitrary-source ABIs). The atom table is non-reclaimable VM resource."
+implemented = "Both call sites route through String.to_existing_atom/1; sobelow_skip annotations removed. Decoder requires snake_case field atoms to be pre-interned; new private atom_key_for!/1 re-raises ArgumentError with a migration hint naming both the underscored atom and the original field. Encoder change is a silent safety upgrade. Picked option (a); rejected per-selector budget / per-process cap as API bloat. README grew a 'Pre-interning atoms for decode_structs: true' subsection. Upstream filing pending — propose the same switch or a decode_structs: :existing_atoms opt-in."
+
+[[task]]
+id = 24
+phase = 3
+bundle = "discovery"
+status = "done"
+title = "Mine defi-skills intent-to-transaction action surface for ABI coverage gaps"
+scores = { d = 3, b = 8, u = 7 }
+scored_at = "2026-04-30"
+done_at = "2026-04-30"
+body = "Read-only discovery exercise: enumerate the defi-skills action surface (~53 actions across 13 protocols) and map relevant actions to hieroglyph's scope — ABI encoding patterns surfaced by the calldata (selectors, struct encoding, dynamic types, nested tuples, edge cases). Propose D/B/U-scored candidate tasks."
+implemented = "pipx install defi-skills 0.3.0; mined 53 actions across 13 protocols. Output landed as the 'Proposed additions from defi-skills mining' section, which became the DeFi Fixtures + Property Suite bundles (tasks 25-31). Discovery only — no ABI.* edits in this task."
+
+# ===========================================================================
+# Phase 4 — DeFi Fixtures & Property Suite
+# ===========================================================================
+
+[[task]]
+id = 25
+phase = 4
+bundle = "defi_fixtures"
+status = "done"
+title = "Real-world golden calldata fixtures from defi-skills build"
+scores = { d = 3, b = 6, u = 6 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Capture round-trip golden calldata vectors from defi-skills build across multiple protocols so the encoder/decoder are pinned against real-world calldata."
+implemented = "test/abi/defi_calldata_test.exs — 10 round-trip golden vectors via defi-skills build --json (v0.3.0). Inline @fixtures attribute (the test/fixtures/defi_calldata.exs proposal was discarded — no .exs data-loading idiom in the repo). Each fixture asserts both directions. Covers Aave V3 supply/borrow/setCollateral, Compound V3 supply/claim, Lido stake/unstake (uint256[] head/tail), EigenLayer deposit, ERC-20 transfer, WETH unwrap."
+
+[[task]]
+id = 26
+phase = 4
+bundle = "defi_fixtures"
+status = "done"
+title = "Function selector golden vectors against FunctionSelector.encode/1"
+scores = { d = 2, b = 5, u = 5 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Golden-vector tests proving method_id/1 and the canonical-signature serialization match the spec across protocols, incl. tuple / tuple[] / fixed-array signatures."
+implemented = "test/abi/function_selector_real_world_test.exs — 12 ABI.method_id/1 golden vectors (Aave, Compound, Lido uint256[], Curve uint256[3], Uniswap V3 tuple arg, Balancer V2 multiple top-level tuples, EigenLayer tuple[], ERC-20, WETH). A second describe block round-trips four tuple/tuple[]/fixed-array signatures through decode/1 ∘ encode/1 and re-asserts the selector."
+
+[[task]]
+id = 27
+phase = 4
+bundle = "defi_fixtures"
+status = "done"
+title = "Empty-args calldata path coverage"
+scores = { d = 1, b = 2, u = 3 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "The f() shape (weth.deposit() / rocket_pool.deposit()) was untested."
+implemented = "Tests in test/abi_test.exs: ABI.encode(\"deposit()\", []) == <<0xD0,0xE3,0x0D,0xB0>>, ABI.decode(\"deposit()\", <<>>) == [], plus the function: nil / types: [] empty-bytes shape."
+
+[[task]]
+id = 28
+phase = 4
+bundle = "property_suite"
+status = "done"
+title = "tuple[] (dynamic array of tuples) round-trip coverage"
+scores = { d = 4, b = 5, u = 5 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Pin down round-trips for dynamic arrays of tuples, including mixed-element and empty cases."
+implemented = "value_for/1 already composed {:array, inner} with {:tuple, ...} (no new generator clause needed — :dynamic is not how this codebase represents dynamic arrays). Added three properties: static-only-element tuple[], mixed-element tuple[] (each element dynamic — most stressing), and an empty tuple[] unit test. The mixed-element property surfaced the 8-year-old nul_terminate_string/1 bug (task 6) on first run."
+
+[[task]]
+id = 29
+phase = 4
+bundle = "property_suite"
+status = "done"
+title = "Empty bytes and empty tuple[] inside struct fields"
+scores = { d = 3, b = 5, u = 4 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Edge cases for empty dynamic fields nested inside structs."
+implemented = "Explicit unit tests for four pinned shapes: (bytes, string) with empty bytes and non-empty string, (bytes, bytes) both empty, empty tuple[] as the only dynamic field in a struct, and empty tuple[] followed by non-empty bytes. Inline test blocks (not @fixtures) — round-trip equality suffices given the property tests already exercise the layout invariants."
+
+[[task]]
+id = 30
+phase = 4
+bundle = "property_suite"
+status = "done"
+title = "Multiple top-level struct args"
+scores = { d = 3, b = 4, u = 4 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Exercise sibling-tuple offset arithmetic when adjacent top-level tuples are dynamic at different rates (the Balancer swap shape)."
+implemented = "Added roundtrip_args/2 alongside single-arg roundtrip/2. New property mirrors Balancer V2 swap(SingleSwap, FundManagement, uint256, uint256) — two sibling structs of differing dynamic-rate plus two scalar args at the ends."
+
+[[task]]
+id = 31
+phase = 4
+bundle = "property_suite"
+status = "done"
+title = "Deep struct nesting (depth ≥ 4) round-trip"
+scores = { d = 2, b = 4, u = 4 }
+scored_at = "2026-04-30"
+done_at = "2026-05-01"
+shipped_in = "1.2.0"
+body = "Raise the composite property's depth cap to stress deeper nested structures."
+implemented = "Bumped type_and_value_gen cap to depth 5; raised the property @tag timeout 120s → 300s; added max_runs: 50 for higher information-density per sample. Depth-5 trees passed cleanly — no production failures from this member (the string-NUL bug came from task 28's mixed-element property)."
+
+# ===========================================================================
+# Phase 5 — Peer-Library Parity
+# ===========================================================================
+
+[[task]]
+id = 32
+phase = 5
+bundle = "peer_parity"
+status = "done"
+title = "ABI.decode_call/3 + ABI.method_id/1"
+scores = { d = 2, b = 5, u = 6 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.1.0"
+body = "Symmetric counterpart to encode/2 for selector-prefixed calldata, plus the selector-derivation primitive."
+implemented = "decode_call strips and verifies the 4-byte selector, then routes the payload through decode/3; returns {:ok, _} or {:error, :calldata_too_short | :selector_mismatch | :no_function_name}. decode/3 semantics unchanged (still payload-only, matches eth-abi/ethers/viem/alloy). method_id/1 exposes keccak256(canonical_signature)[0..3]."
+
+[[task]]
+id = 33
+phase = 5
+bundle = "peer_parity"
+status = "done"
+title = "Implement function type encode/decode"
+scores = { d = 2, b = 5, u = 5 }
+scored_at = "2026-05-01"
+done_at = "2026-05-01"
+shipped_in = "1.3.0"
+body = "24-byte external function pointer (20-byte address ++ 4-byte selector). Lift upstream #54's parse-time rejection for :function (fixed/ufixed stay deferred per Solidity's incomplete support)."
+implemented = "One encoder clause, one decoder clause, one packed-encoder clause; reused encode_bytes/1 (right-pad to 32) and decode_bytes/3 (unpad via Math.unpad). function[], function[N], and (uint256, function) work via existing recursion. README 'Support' explains why fixed/ufixed stay deferred. Standalone upstream PR candidate."
+
+[[task]]
+id = 34
+phase = 5
+bundle = "encode_symmetry"
+milestone = "encode_symmetry"
+status = "pending"
+title = "ABI.encode_call/3 (selector-prefixed calldata)"
+scores = { d = 2, b = 5, u = 6 }
+scored_at = "2026-05-01"
+body = "Symmetric counterpart to decode_call/3. One-shot method_id/1 ++ encode/2: takes a signature string or %FunctionSelector{} plus the args list, returns the 4-byte-prefixed calldata blob. Mirrors viem.encodeFunctionData / ethers.Interface.encodeFunctionData / eth_abi.encode_abi_with_selector. api() declaration with composes_with: link to decode_call/3. Three clauses: signature-binary, %FunctionSelector{function: nil} (raise ArgumentError), %FunctionSelector{}."
+acceptance_criteria = [
+  "encode_call/3 accepts a signature string and returns selector-prefixed calldata",
+  "encode_call/3 accepts a %FunctionSelector{} and returns the same blob",
+  "%FunctionSelector{function: nil} raises ArgumentError",
+  "api() declaration carries a composes_with: link to decode_call/3",
+  "README Usage gets an encode-side example matching the existing decode_call/3 example",
+  "CHANGELOG entry under [Unreleased]",
+]
+
+[[task]]
+id = 35
+phase = 5
+bundle = "encode_symmetry"
+milestone = "encode_symmetry"
+status = "pending"
+title = "ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob)"
+scores = { d = 2, b = 5, u = 4 }
+scored_at = "2026-05-01"
+body = "Symmetric counterpart to decode_error/2. Given an error signature + args, return <<selector::4-bytes, abi_encoded_args::binary>>. Test-harness, RPC-mock, and contract-fuzzer use cases. Mirrors viem.encodeErrorResult. api() declaration with composes_with: link to decode_error/2. Same three-clause shape as encode_call/3."
+acceptance_criteria = [
+  "encode_error/3 returns selector-prefixed revert data for a signature + args",
+  "Accepts both a signature string and a %FunctionSelector{}",
+  "Round-trips against decode_error/2",
+  "api() declaration carries a composes_with: link to decode_error/2",
+  "CHANGELOG entry under [Unreleased]",
+]
+
+[[task]]
+id = 36
+phase = 5
+bundle = "encode_symmetry"
+milestone = "encode_symmetry"
+status = "pending"
+title = "ABI.encode_event_topics/2 (event log topic filter builder)"
+scores = { d = 4, b = 7, u = 7 }
+scored_at = "2026-05-01"
+body = "Symmetric counterpart to decode_event/4. Given a parsed event signature + indexed-arg values (or :any wildcards for unfiltered slots), return [topic0, topic1?, topic2?, topic3?] for eth_getLogs. Indexed value types pad to 32; indexed reference types (arrays — fixed or dynamic — plus tuples, string, bytes) hash via the existing reference_type?/1 predicate from the #53 fix. Anonymous events skip topic0. Mirrors viem.encodeEventTopics / ethers.Interface.encodeFilterTopics. api() declaration with composes_with: links to decode_event/4 and event_signature/1."
+acceptance_criteria = [
+  "Returns [topic0, topic1?, ...] for a signature + indexed values",
+  ":any wildcard leaves a topic slot unfiltered",
+  "Indexed reference types hash via reference_type?/1; value types pad to 32",
+  "Anonymous events omit topic0",
+  "api() declaration carries composes_with: links to decode_event/4 and event_signature/1",
+  "README Usage gets a topic-filter example",
+  "CHANGELOG entry under [Unreleased]",
+]
+
+[[task]]
+id = 37
+phase = 5
+bundle = "peer_parity"
+status = "pending"
+title = "ABI.get_abi_item/3 (lookup helper over parse_specification output)"
+scores = { d = 2, b = 3, u = 3 }
+scored_at = "2026-05-01"
+body = "Find a fragment by name with optional arg-type disambiguation for overloads. Takes the parsed-spec list (output of parse_specification/1) plus a name string plus optional arg types (list of type atoms). Returns {:ok, %FunctionSelector{}}, {:error, :not_found}, or {:error, {:ambiguous, [%FunctionSelector{}, ...]}} when multiple matches and no disambiguator. Mirrors viem.getAbiItem. New top-level function on ABI; api() declaration."
+acceptance_criteria = [
+  "Returns {:ok, %FunctionSelector{}} for a unique name match",
+  "Returns {:error, :not_found} when no fragment matches",
+  "Returns {:error, {:ambiguous, [...]}} for overloads with no arg-type disambiguator",
+  "Arg-types argument disambiguates overloads",
+  "api() declaration present",
+  "CHANGELOG entry under [Unreleased]",
+]
+
+[[task]]
+id = 38
+phase = 5
+bundle = "peer_parity"
+status = "pending"
+title = "Strict-decode mode (strict: true opt)"
+scores = { d = 5, b = 6, u = 4 }
+scored_at = "2026-05-01"
+body = "Defense-in-depth opt for adversarial-calldata callers. When strict: true, reject: non-zero high padding bits on bool/uint/int (must be zero/sign-extended), trailing bytes after the declared payload (currently silently ignored), string/bytes length prefixes that don't match available data. Default strict: false keeps existing behavior for back-compat. Apply across decode/3, decode_call/3, decode_event/4, decode_error/2. Mirrors eth-abi's strict_mode and viem's strict flag. New errors: {:error, {:strict_violation, _detail}}."
+acceptance_criteria = [
+  "strict: true rejects non-zero high padding on bool/uint/int",
+  "strict: true rejects trailing bytes after the declared payload",
+  "strict: true rejects mismatched string/bytes length prefixes",
+  "Default strict: false preserves all existing behavior",
+  "Applied across decode/3, decode_call/3, decode_event/4, decode_error/2",
+  "New {:error, {:strict_violation, _}} error shape",
+  "README Usage gets a security-note paragraph; CHANGELOG entry under [Unreleased]",
+]
+
+[[task]]
+id = 39
+phase = 5
+bundle = "peer_parity"
+status = "pending"
+title = "Implement fixed<M>x<N> / ufixed<M>x<N>"
+scores = { d = 8, b = 3, u = 2 }
+scored_at = "2026-05-01"
+body = "Decimal fixed-point types. Rarely seen in real contracts; Solidity itself does not fully support fixed-point types, so there is nothing real-world to encode against. High cost (encoder + decoder + range validation), low payoff. DEFERRED unless a downstream consumer surfaces a concrete need — currently rejected at parse time (task 2) for clarity."
+out_of_scope = ["Implementation while Solidity's own fixed-point support remains incomplete — the current parse-time rejection stands."]
+acceptance_criteria = [
+  "If implemented: encoder + decoder + range validation for fixed<M>x<N> and ufixed<M>x<N>",
+  "If implemented: README Support checkboxes flipped to [X]",
+  "If deferred-permanently: README documents the explicit parse-time rejection",
+  "CHANGELOG entry under [Unreleased]",
+]

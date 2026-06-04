@@ -113,8 +113,8 @@
         {Credo.Check.Refactor.NegatedConditionsInUnless},
         {Credo.Check.Refactor.NegatedConditionsWithElse},
         {Credo.Check.Refactor.Nesting},
-        {Credo.Check.Refactor.PipeChainStart, false}, #,
-        # excluded_argument_types: [:atom, :binary, :fn, :keyword], excluded_functions: []},
+        # ,
+        {Credo.Check.Refactor.PipeChainStart, false},
         {Credo.Check.Refactor.UnlessWithElse},
 
         #
@@ -149,7 +149,7 @@
         #
         # Deprecated checks (these will be deleted after a grace period)
         #
-        {Credo.Check.Readability.Specs, false}
+        {Credo.Check.Readability.Specs, include_defp: true}
 
         #
         # Custom checks can be created using `mix credo.gen.check`.
