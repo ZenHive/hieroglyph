@@ -414,6 +414,60 @@ defmodule ABI do
     end
   end
 
+  api(:encode_error, "Encodes args into selector-prefixed revert data for a named custom error.",
+    params: [
+      signature_or_selector: [
+        kind: :value,
+        description: "Either a raw signature string or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      data: [
+        kind: :value,
+        description: "List of values to encode, in argument order."
+      ],
+      opts: [
+        kind: :value,
+        description: "Reserved keyword options; currently unused."
+      ]
+    ],
+    returns: %{
+      type: :binary,
+      description: "Full revert data bytes: 4-byte error selector followed by ABI-encoded args."
+    },
+    composes_with: [:decode_error]
+  )
+
+  @doc """
+  Encodes args into selector-prefixed revert data for a Solidity 0.8.4+ custom error.
+
+  This is the encode-side counterpart to `decode_error/2`: pass an error signature or
+  `ABI.FunctionSelector`, plus the argument list, and receive the full revert data blob.
+
+  ## Examples
+
+      iex> ABI.encode_error("InsufficientBalance(uint256,uint256)", [10, 100])
+      ...> |> Base.encode16(case: :lower)
+      "cf479181000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000064"
+
+      iex> ABI.encode_error(%ABI.FunctionSelector{function: nil, types: []}, [])
+      ** (ArgumentError) encode_error/3 requires a function name; use encode/2 for payload-only data
+  """
+  @spec encode_error(binary() | FunctionSelector.t(), [any()], keyword()) ::
+          binary()
+  def encode_error(signature_or_selector, data, opts \\ [])
+
+  def encode_error(signature, data, opts) when is_binary(signature) do
+    encode_error(FunctionSelector.decode(signature), data, opts)
+  end
+
+  def encode_error(%FunctionSelector{function: nil}, _data, _opts) do
+    raise ArgumentError,
+          "encode_error/3 requires a function name; use encode/2 for payload-only data"
+  end
+
+  def encode_error(%FunctionSelector{} = function_selector, data, _opts) do
+    encode(function_selector, data)
+  end
+
   api(
     :decode_error,
     "Decodes selector-prefixed revert data against a list of known custom-error definitions.",

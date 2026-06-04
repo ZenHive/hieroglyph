@@ -1,6 +1,7 @@
 # Unreleased
 
 * **New API — `ABI.encode_call/3`.** Encode-side counterpart to `decode_call/3` for selector-prefixed calldata. Accepts a signature string or pre-parsed `FunctionSelector` plus args, returns the 4-byte method ID followed by the ABI-encoded payload, and raises `ArgumentError` for `%FunctionSelector{function: nil}` so payload-only callers keep using `encode/2`. The `api()` declaration composes with `decode_call/3`, and README Usage now shows the encode-side calldata example beside the existing decode example.
+* **New API — `ABI.encode_error/3`.** Encode-side counterpart to `decode_error/2` for Solidity 0.8.4+ custom-error revert blobs. Accepts a signature string or pre-parsed `FunctionSelector` plus args, returns the 4-byte error selector followed by the ABI-encoded payload, and raises `ArgumentError` for `%FunctionSelector{function: nil}` so payload-only callers keep using `encode/2`. The `api()` declaration composes with `decode_error/2`. Mirrors viem's `encodeErrorResult` for test-harness, RPC-mock, and contract-fuzzer use cases.
 
 # 1.4.0 - 2026-05-01
 
