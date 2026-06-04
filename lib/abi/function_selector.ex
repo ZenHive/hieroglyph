@@ -48,7 +48,7 @@ defmodule ABI.FunctionSelector do
           function_type: function_type() | nil,
           state_mutability: state_mutability() | nil,
           types: [argument_type()],
-          returns: type() | [argument_type()] | nil
+          returns: type() | [argument_type()] | :anonymous | nil
         }
 
   # An ABI JSON parameter object: a string-keyed map (`"name"`, `"type"`,
@@ -359,8 +359,11 @@ defmodule ABI.FunctionSelector do
     input_types = Enum.map(Map.get(item, "inputs", []), &parse_specification_type/1)
 
     output_types =
-      if Map.has_key?(item, "outputs"),
-        do: Enum.map(item["outputs"], &parse_specification_type/1)
+      cond do
+        Map.get(item, "anonymous") == true -> :anonymous
+        Map.has_key?(item, "outputs") -> Enum.map(item["outputs"], &parse_specification_type/1)
+        true -> nil
+      end
 
     state_mutability =
       if Map.has_key?(item, "stateMutability"),

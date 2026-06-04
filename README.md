@@ -183,6 +183,21 @@ Event logs arrive as `{data, topics}` pairs from the JSON-RPC node. `ABI.decode_
 
 Errors come back as a closed atom-tagged set — `{:error, {:event_signature_mismatch, %{expected: _, got: _}}}` when `topics[0]` doesn't match the expected signature, `{:error, {:topics_length_mismatch, _}}` when the topic count is wrong for the indexed-parameter count, and `{:error, {:malformed_data, _}}` when the non-indexed payload fails to decode. Pattern-match the tag rather than parsing strings.
 
+To build a matching `eth_getLogs` topic filter, pass indexed argument values to `ABI.encode_event_topics/2` in event order. Use `:any` for an unfiltered indexed slot.
+
+```elixir
+iex> hex = &Base.decode16!(&1, case: :lower)
+iex> ABI.encode_event_topics(
+...>   "Transfer(address indexed from,address indexed to,uint256 amount)",
+...>   [hex.("b2b7c1795f19fbc28fda77a95e59edbb8b3709c8"), :any]
+...> )
+[
+  hex.("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
+  hex.("000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8"),
+  :any
+]
+```
+
 ```elixir
 iex> hex = &Base.decode16!(&1, case: :lower)
 iex> ABI.decode_event(

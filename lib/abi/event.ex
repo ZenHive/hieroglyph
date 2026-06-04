@@ -12,6 +12,7 @@ defmodule ABI.Event do
   alias ABI.FunctionSelector
   alias ABI.Math
   alias ABI.TypeDecoder
+  alias ABI.TypeEncoder
 
   api(
     :decode_event,
@@ -76,9 +77,73 @@ defmodule ABI.Event do
   @typep decoded_map :: %{optional(String.t()) => term()}
   # A list of ABI argument descriptors (the `:types` of a FunctionSelector).
   @typep arg_types :: [FunctionSelector.argument_type()]
+  @typep topic_filter :: binary() | :any
   # The `topics[0]` verification failure, mirrored from `t:decode_error/0`.
   @typep sig_mismatch ::
            {:event_signature_mismatch, %{expected: binary(), got: binary()}}
+
+  api(
+    :encode_event_topics,
+    "Build an eth_getLogs topic filter list from an event selector and indexed argument values.",
+    params: [
+      function_selector: [
+        kind: :value,
+        description: "Pre-parsed event FunctionSelector with type metadata including indexed flags"
+      ],
+      indexed_values: [
+        kind: :value,
+        description: "Prefix list of indexed argument values in event order. Use :any to leave a topic slot unfiltered."
+      ]
+    ],
+    returns: %{
+      type: :list,
+      description:
+        "Topic filter list. Non-anonymous events start with topics[0] = event_signature/1; anonymous events omit that slot. Value-type indexed args encode to one 32-byte topic, while indexed reference-type args encode to keccak256 of their in-place event encoding."
+    },
+    composes_with: [:decode_event, :event_signature]
+  )
+
+  @doc """
+  Builds an `eth_getLogs` topic filter list for indexed event arguments.
+
+  Pass indexed argument values in event order. Use `:any` for an unfiltered
+  indexed slot. Non-anonymous events include `topics[0]`; anonymous events
+  parsed from JSON ABI omit it.
+
+  ## Examples
+
+      iex> ABI.Event.encode_event_topics(
+      ...>   %ABI.FunctionSelector{
+      ...>     function: "Transfer",
+      ...>     types: [
+      ...>       %{type: :address, name: "from", indexed: true},
+      ...>       %{type: :address, name: "to", indexed: true},
+      ...>       %{type: {:uint, 256}, name: "amount"}
+      ...>     ]
+      ...>   },
+      ...>   [~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8], :any]
+      ...> )
+      [
+        ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],
+        ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
+        :any
+      ]
+  """
+  @spec encode_event_topics(FunctionSelector.t(), [any() | :any]) ::
+          [topic_filter()]
+  def encode_event_topics(%FunctionSelector{} = function_selector, indexed_values) when is_list(indexed_values) do
+    indexed_types = Enum.filter(function_selector.types, &Map.get(&1, :indexed, false))
+
+    if length(indexed_values) > length(indexed_types) do
+      raise ArgumentError,
+            "encode_event_topics/2 got #{length(indexed_values)} indexed values " <>
+              "for #{length(indexed_types)} indexed event parameters"
+    end
+
+    function_selector
+    |> event_topic0()
+    |> Kernel.++(encode_indexed_topic_filters(indexed_types, indexed_values))
+  end
 
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
@@ -270,6 +335,89 @@ defmodule ABI.Event do
   defp reference_type?({:array, _, _}), do: true
   defp reference_type?({:tuple, _}), do: true
   defp reference_type?(_), do: false
+
+  @spec event_topic0(FunctionSelector.t()) :: [binary()]
+  defp event_topic0(%FunctionSelector{} = function_selector) do
+    if anonymous_event?(function_selector),
+      do: [],
+      else: [event_signature(function_selector)]
+  end
+
+  @spec anonymous_event?(FunctionSelector.t()) :: boolean()
+  defp anonymous_event?(%FunctionSelector{function_type: :event, returns: :anonymous}), do: true
+
+  defp anonymous_event?(_function_selector), do: false
+
+  @spec encode_indexed_topic_filters(arg_types(), [any() | :any]) ::
+          [topic_filter()]
+  defp encode_indexed_topic_filters(indexed_types, indexed_values) do
+    indexed_types
+    |> Enum.zip(indexed_values)
+    |> Enum.map(fn
+      {_param, :any} -> :any
+      {param, value} -> encode_indexed_topic(param, value)
+    end)
+  end
+
+  @spec encode_indexed_topic(FunctionSelector.argument_type(), any()) ::
+          binary()
+  defp encode_indexed_topic(%{type: type} = param, value) do
+    if reference_type?(type) do
+      type
+      |> encode_indexed_reference(value)
+      |> Math.kec()
+    else
+      TypeEncoder.encode_raw([value], [param])
+    end
+  end
+
+  @spec encode_indexed_reference(FunctionSelector.type(), any()) :: binary()
+  defp encode_indexed_reference(:string, value) when is_binary(value), do: value
+  defp encode_indexed_reference(:bytes, value) when is_binary(value), do: value
+
+  defp encode_indexed_reference({:array, type, element_count}, values)
+       when is_list(values) and length(values) == element_count do
+    Enum.map_join(values, <<>>, &encode_indexed_member(type, &1))
+  end
+
+  defp encode_indexed_reference({:array, _type, element_count}, values) when is_list(values) do
+    raise ArgumentError,
+          "encode_event_topics/2 array size mismatch: expected #{element_count}, got #{length(values)}"
+  end
+
+  defp encode_indexed_reference({:array, type}, values) when is_list(values) do
+    Enum.map_join(values, <<>>, &encode_indexed_member(type, &1))
+  end
+
+  defp encode_indexed_reference({:tuple, types}, values) do
+    tuple_values = tuple_to_list(values)
+
+    if length(tuple_values) != length(types) do
+      raise ArgumentError,
+            "encode_event_topics/2 tuple size mismatch: expected #{length(types)}, " <>
+              "got #{length(tuple_values)}"
+    end
+
+    types
+    |> Enum.zip(tuple_values)
+    |> Enum.map_join(<<>>, fn {%{type: type}, value} ->
+      encode_indexed_member(type, value)
+    end)
+  end
+
+  @spec encode_indexed_member(FunctionSelector.type(), any()) :: binary()
+  defp encode_indexed_member(type, value) do
+    if reference_type?(type) do
+      encoded = encode_indexed_reference(type, value)
+      Math.pad(encoded, byte_size(encoded), :right)
+    else
+      TypeEncoder.encode_raw([value], [%{type: type}])
+    end
+  end
+
+  @spec tuple_to_list(tuple() | [any()]) :: [any()]
+  defp tuple_to_list(values) when is_tuple(values), do: Tuple.to_list(values)
+  defp tuple_to_list(values) when is_list(values), do: values
 
   @spec verify_event_signature(decoded_map(), FunctionSelector.t()) ::
           {:ok, decoded_map()} | {:error, sig_mismatch()}

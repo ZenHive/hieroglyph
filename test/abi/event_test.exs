@@ -5,8 +5,80 @@ defmodule ABI.EventTest do
   alias ABI.Event
   alias ABI.FunctionSelector
   alias ABI.Math
+  alias ABI.TypeEncoder
 
   doctest Event
+
+  describe "encode_event_topics/2" do
+    test "returns topic0 plus padded indexed value topics and :any wildcards" do
+      from = ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8]
+
+      topics =
+        ABI.encode_event_topics(
+          "Transfer(address indexed from,address indexed to,uint256 amount)",
+          [from, :any]
+        )
+
+      assert topics == [
+               Event.event_signature(
+                 FunctionSelector.decode("Transfer(address indexed from,address indexed to,uint256 amount)")
+               ),
+               ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
+               :any
+             ]
+    end
+
+    test "hashes indexed reference-type values before adding topics" do
+      selector = FunctionSelector.decode("Named(string indexed who,bytes indexed payload,uint256 amount)")
+      payload = <<0xDE, 0xAD, 0xBE, 0xEF>>
+
+      assert ABI.encode_event_topics(selector, ["alice", payload]) == [
+               Event.event_signature(selector),
+               Math.kec("alice"),
+               Math.kec(payload)
+             ]
+    end
+
+    test "hashes indexed arrays and tuples using their in-place event encoding" do
+      selector =
+        FunctionSelector.decode("Shaped(uint256[2] indexed pair,(uint256,uint256) indexed point)")
+
+      pair_encoding =
+        TypeEncoder.encode_packed([[1, 2]], [
+          %{type: {:array, {:uint, 256}, 2}}
+        ])
+
+      point_encoding = ABI.encode("(uint256,uint256)", [{3, 4}])
+
+      assert ABI.encode_event_topics(selector, [[1, 2], {3, 4}]) == [
+               Event.event_signature(selector),
+               Math.kec(pair_encoding),
+               Math.kec(point_encoding)
+             ]
+    end
+
+    test "anonymous parsed events omit topic0" do
+      selector =
+        FunctionSelector.parse_specification_item(%{
+          "anonymous" => true,
+          "inputs" => [
+            %{"indexed" => true, "name" => "who", "type" => "address"}
+          ],
+          "name" => "Seen",
+          "type" => "event"
+        })
+
+      assert ABI.encode_event_topics(selector, [<<1::160>>]) == [
+               ~h[0x0000000000000000000000000000000000000000000000000000000000000001]
+             ]
+    end
+
+    test "api metadata composes with decode_event and event_signature" do
+      entry = Enum.find(ABI.__api__(), &(&1.name == :encode_event_topics))
+
+      assert entry.hints.composes_with == [:decode_event, :event_signature]
+    end
+  end
 
   describe "indexed reference-type parameters (upstream #53)" do
     # Per the Solidity ABI spec, indexed parameters of reference type

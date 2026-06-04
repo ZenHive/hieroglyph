@@ -295,6 +295,35 @@
         },
         {
           "arity": 2,
+          "name": "encode_event_topics",
+          "description": "Builds an `eth_getLogs` topic filter list for indexed event arguments.\n\nPass indexed argument values in event order. Use `:any` for an unfiltered\nindexed slot. Indexed value types encode as 32-byte topics; indexed\nreference types encode as `keccak256` hashes of their in-place event\nencoding.\n\n## Examples\n\n    iex> ABI.encode_event_topics(\n    ...>   \"Transfer(address indexed from,address indexed to,uint256 amount)\",\n    ...>   [~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8], :any]\n    ...> )\n    [\n      ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n      ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n      :any\n    ]",
+          "signature": "encode_event_topics(function_signature, indexed_values)",
+          "spec": "encode_event_topics(binary() | ABI.FunctionSelector.t(), [any() | :any]) :: [binary() | :any]",
+          "defaults": 0,
+          "hints": {
+            "description": "Builds an eth_getLogs topic filter list from an event signature and indexed values.",
+            "params": {
+              "function_signature": {
+                "description": "Either a raw event signature string or a pre-parsed ABI.FunctionSelector struct.",
+                "kind": "value"
+              },
+              "indexed_values": {
+                "description": "Prefix list of indexed argument values in event order. Use :any to leave a topic slot unfiltered.",
+                "kind": "value"
+              }
+            },
+            "returns": {
+              "type": "list",
+              "description": "Topic filter list for eth_getLogs. Non-anonymous events include topics[0] = event_signature/1; anonymous events parsed from JSON ABI omit that slot."
+            },
+            "composes_with": [
+              "decode_event",
+              "event_signature"
+            ]
+          }
+        },
+        {
+          "arity": 2,
           "name": "encode_packed",
           "description": "Encodes a list of values using Solidity's\n[non-standard packed mode](https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode).\n\nUsed primarily for `keccak256(abi.encodePacked(...))` Merkle leaves and\nsignature schemes; never used for actual function calls (the spec defines\nno decoding function — encoding is ambiguous with multiple dynamic args).\n\nTuple/struct values and nested arrays raise `ArgumentError` — the spec\ndoes not define their packed encoding.\n\n> #### Warning {: .warning}\n>\n> If both `a` and `b` are dynamic types, `abi.encodePacked(a, b)` is\n> ambiguous: `abi.encodePacked(\"a\", \"bc\") == abi.encodePacked(\"ab\", \"c\")`.\n> Do not feed multiple dynamic args into packed-mode signature schemes\n> without controlling for that collision.\n\n## Examples\n\n    iex> ABI.encode_packed(\"foo(int16,bytes1,uint16,string)\", [-1, <<0x42>>, 3, \"Hello, world!\"])\n    ...> |> Base.encode16(case: :lower)\n    \"ffff42000348656c6c6f2c20776f726c6421\"\n\n    iex> ABI.encode_packed(\"leaf(address,uint256)\", [<<1::160>>, 100])\n    ...> |> Base.encode16(case: :lower)\n    \"00000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000064\"\n\n    iex> ABI.encode_packed(\"foo(uint8[])\", [[1, 2, 3]])\n    ...> |> Base.encode16(case: :lower)\n    \"000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003\"",
           "signature": "encode_packed(signature_or_selector, values)",
@@ -393,8 +422,7 @@
         }
       ],
       "module": "ABI",
-      "description": "Documentation for ABI, the function interface language for Solidity.\nGenerally, the ABI describes how to take binary Ethereum and transform\nit to or from types that Solidity understands.\n\n## Agent Discovery\n\nUse `ABI.describe/0..2` for progressive API discovery:\n\n    ABI.describe()                    # Level 1: all annotated modules\n    ABI.describe(:abi)                # Level 2: functions in this module\n    ABI.describe(:abi, :encode)       # Level 3: full contract for encode/2\n\nA static `api_manifest.json` covering every public function is emitted by\n`mix descripex.manifest --app hieroglyph` (a dedicated `mix\nhieroglyph.manifest` wrapper ships in 1.2.0 alongside Phase 3 of the agent\neconomy work — see CHANGELOG). Downstream consumers may diff that manifest\nacross hieroglyph version bumps as a contract-stability check.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `parse_specification` | 1 | Parses an ABI specification document into a list of ABI.FunctionSelector structs. | `doc: value` |\n| `event_signature` | 1 | Returns the 32-byte topic hash for an event signature. | `function_signature: value` |\n| `decode_event` | 4 | Decodes an event from raw log data and indexed topics. | `function_signature: value`, `data: value`, `topics: value`, `opts: value` |\n| `encode_packed` | 2 | Encodes values using Solidity's non-standard packed mode (abi.encodePacked). | `signature_or_selector: value`, `values: value` |\n| `decode_error` | 2 | Decodes selector-prefixed revert data against known custom-error definitions, plus the Solidity built-in Error(string)/Panic(uint256) errors. | `revert_data: value`, `error_definitions: value` |\n| `encode_error` | 3 | Encodes args into selector-prefixed revert data for a named custom error. | `signature_or_selector: value`, `data: value`, `opts: value` |\n| `decode_call` | 3 | Decodes selector-prefixed calldata (4-byte method ID + ABI-encoded args) and verifies the selector matches. | `signature_or_selector: value`, `calldata: value`, `opts: value` |\n| `decode` | 3 | Decodes the given data based on the function or tuple signature. | `function_signature: value`, `data: value`, `opts: value` |\n| `method_id` | 1 | Returns the 4-byte function selector (method ID) for a function signature. | `signature: value` |\n| `encode_call` | 3 | Encodes args into selector-prefixed calldata for a named function. | `signature_or_selector: value`, `data: value`, `opts: value` |\n| `encode` | 2 | Encodes the given data into the function signature or tuple signature. | `function_signature: value`, `data: value` |",
-
+      "description": "Documentation for ABI, the function interface language for Solidity.\nGenerally, the ABI describes how to take binary Ethereum and transform\nit to or from types that Solidity understands.\n\n## Agent Discovery\n\nUse `ABI.describe/0..2` for progressive API discovery:\n\n    ABI.describe()                    # Level 1: all annotated modules\n    ABI.describe(:abi)                # Level 2: functions in this module\n    ABI.describe(:abi, :encode)       # Level 3: full contract for encode/2\n\nA static `api_manifest.json` covering every public function is emitted by\n`mix descripex.manifest --app hieroglyph` (a dedicated `mix\nhieroglyph.manifest` wrapper ships in 1.2.0 alongside Phase 3 of the agent\neconomy work \u2014 see CHANGELOG). Downstream consumers may diff that manifest\nacross hieroglyph version bumps as a contract-stability check.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `parse_specification` | 1 | Parses an ABI specification document into a list of ABI.FunctionSelector structs. | `doc: value` |\n| `event_signature` | 1 | Returns the 32-byte topic hash for an event signature. | `function_signature: value` |\n| `encode_event_topics` | 2 | Builds an eth_getLogs topic filter list from an event signature and indexed values. | `function_signature: value`, `indexed_values: value` |\n| `decode_event` | 4 | Decodes an event from raw log data and indexed topics. | `function_signature: value`, `data: value`, `topics: value`, `opts: value` |\n| `encode_packed` | 2 | Encodes values using Solidity's non-standard packed mode (abi.encodePacked). | `signature_or_selector: value`, `values: value` |\n| `decode_error` | 2 | Decodes selector-prefixed revert data against known custom-error definitions, plus the Solidity built-in Error(string)/Panic(uint256) errors. | `revert_data: value`, `error_definitions: value` |\n| `encode_error` | 3 | Encodes args into selector-prefixed revert data for a named custom error. | `signature_or_selector: value`, `data: value`, `opts: value` |\n| `decode_call` | 3 | Decodes selector-prefixed calldata (4-byte method ID + ABI-encoded args) and verifies the selector matches. | `signature_or_selector: value`, `calldata: value`, `opts: value` |\n| `decode` | 3 | Decodes the given data based on the function or tuple signature. | `function_signature: value`, `data: value`, `opts: value` |\n| `method_id` | 1 | Returns the 4-byte function selector (method ID) for a function signature. | `signature: value` |\n| `encode_call` | 3 | Encodes args into selector-prefixed calldata for a named function. | `signature_or_selector: value`, `data: value`, `opts: value` |\n| `encode` | 2 | Encodes the given data into the function signature or tuple signature. | `function_signature: value`, `data: value` |",
       "namespace": "/abi"
     },
     {
@@ -479,6 +507,35 @@
           }
         },
         {
+          "arity": 2,
+          "name": "encode_event_topics",
+          "description": "Builds an `eth_getLogs` topic filter list for indexed event arguments.\n\nPass indexed argument values in event order. Use `:any` for an unfiltered\nindexed slot. Non-anonymous events include `topics[0]`; anonymous events\nparsed from JSON ABI omit it.\n\n## Examples\n\n    iex> ABI.Event.encode_event_topics(\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"}\n    ...>     ]\n    ...>   },\n    ...>   [~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8], :any]\n    ...> )\n    [\n      ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n      ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n      :any\n    ]",
+          "signature": "encode_event_topics(function_selector, indexed_values)",
+          "spec": "encode_event_topics(ABI.FunctionSelector.t(), [any() | :any]) :: [topic_filter()]",
+          "defaults": 0,
+          "hints": {
+            "description": "Build an eth_getLogs topic filter list from an event selector and indexed argument values.",
+            "params": {
+              "function_selector": {
+                "description": "Pre-parsed event FunctionSelector with type metadata including indexed flags",
+                "kind": "value"
+              },
+              "indexed_values": {
+                "description": "Prefix list of indexed argument values in event order. Use :any to leave a topic slot unfiltered.",
+                "kind": "value"
+              }
+            },
+            "returns": {
+              "type": "list",
+              "description": "Topic filter list. Non-anonymous events start with topics[0] = event_signature/1; anonymous events omit that slot. Value-type indexed args encode to one 32-byte topic, while indexed reference-type args encode to keccak256 of their in-place event encoding."
+            },
+            "composes_with": [
+              "decode_event",
+              "event_signature"
+            ]
+          }
+        },
+        {
           "arity": 1,
           "name": "event_signature",
           "description": "Returns the signature of an event, i.e. the first item that appears\nin an Ethereum log for this event.\n\n## Examples\n\n    iex> ABI.Event.event_signature(\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   }\n    ...> )\n    ...> |> to_hex()\n    \"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef\"",
@@ -504,7 +561,7 @@
         }
       ],
       "module": "ABI.Event",
-      "description": "Decodes Ethereum event log data into Solidity-typed arguments.\n\nSplits the topic list (indexed parameters) from the data blob (non-indexed\nparameters) per the ABI specification, and optionally verifies that\n`topics[0]` matches the `keccak256` hash of the event signature.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `canonical` | 2 | Render the canonical signature string of an event for hashing or display, optionally including indexed and parameter-name annotations. | `function_selector: value`, `opts: value` |\n| `event_signature` | 1 | Compute the keccak-256 hash of the event's canonical signature, used as topics[0] in event logs. | `function_selector: value` |\n| `decode_event` | 4 | Decode an Ethereum event log, splitting indexed parameters from topics and non-indexed parameters from the data blob, optionally verifying topics[0] against the event signature. | `data: exchange_data`, `topics: exchange_data`, `function_selector: value`, `opts: value` |",
+      "description": "Decodes Ethereum event log data into Solidity-typed arguments.\n\nSplits the topic list (indexed parameters) from the data blob (non-indexed\nparameters) per the ABI specification, and optionally verifies that\n`topics[0]` matches the `keccak256` hash of the event signature.\n\n\n## API Functions\n| Function | Arity | Description | Param Kinds |\n| --- | --- | --- | --- |\n| `canonical` | 2 | Render the canonical signature string of an event for hashing or display, optionally including indexed and parameter-name annotations. | `function_selector: value`, `opts: value` |\n| `event_signature` | 1 | Compute the keccak-256 hash of the event's canonical signature, used as topics[0] in event logs. | `function_selector: value` |\n| `encode_event_topics` | 2 | Build an eth_getLogs topic filter list from an event selector and indexed argument values. | `function_selector: value`, `indexed_values: value` |\n| `decode_event` | 4 | Decode an Ethereum event log, splitting indexed parameters from topics and non-indexed parameters from the data blob, optionally verifying topics[0] against the event signature. | `data: exchange_data`, `topics: exchange_data`, `function_selector: value`, `opts: value` |",
       "namespace": "/selector"
     },
     {
@@ -974,5 +1031,5 @@
       "namespace": "/math"
     }
   ],
-  "generated_at": "2026-06-04T18:11:08.090023Z"
+  "generated_at": "2026-06-04T18:12:19.495648Z"
 }

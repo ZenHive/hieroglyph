@@ -886,6 +886,55 @@ defmodule ABI do
     Event.decode_event(data, topics, function_selector, opts)
   end
 
+  api(:encode_event_topics, "Builds an eth_getLogs topic filter list from an event signature and indexed values.",
+    params: [
+      function_signature: [
+        kind: :value,
+        description: "Either a raw event signature string or a pre-parsed ABI.FunctionSelector struct."
+      ],
+      indexed_values: [
+        kind: :value,
+        description: "Prefix list of indexed argument values in event order. Use :any to leave a topic slot unfiltered."
+      ]
+    ],
+    returns: %{
+      type: :list,
+      description:
+        "Topic filter list for eth_getLogs. Non-anonymous events include topics[0] = event_signature/1; anonymous events parsed from JSON ABI omit that slot."
+    },
+    composes_with: [:decode_event, :event_signature]
+  )
+
+  @doc """
+  Builds an `eth_getLogs` topic filter list for indexed event arguments.
+
+  Pass indexed argument values in event order. Use `:any` for an unfiltered
+  indexed slot. Indexed value types encode as 32-byte topics; indexed
+  reference types encode as `keccak256` hashes of their in-place event
+  encoding.
+
+  ## Examples
+
+      iex> ABI.encode_event_topics(
+      ...>   "Transfer(address indexed from,address indexed to,uint256 amount)",
+      ...>   [~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8], :any]
+      ...> )
+      [
+        ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],
+        ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],
+        :any
+      ]
+  """
+  @spec encode_event_topics(binary() | FunctionSelector.t(), [any() | :any]) ::
+          [binary() | :any]
+  def encode_event_topics(function_signature, indexed_values) when is_binary(function_signature) do
+    encode_event_topics(FunctionSelector.decode(function_signature), indexed_values)
+  end
+
+  def encode_event_topics(%FunctionSelector{} = function_selector, indexed_values) do
+    Event.encode_event_topics(function_selector, indexed_values)
+  end
+
   api(:event_signature, "Returns the 32-byte topic hash for an event signature.",
     params: [
       function_signature: [
