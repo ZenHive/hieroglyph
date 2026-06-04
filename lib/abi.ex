@@ -968,6 +968,65 @@ defmodule ABI do
   end
 
   api(
+    :format_abi_item,
+    "Renders a FunctionSelector as its canonical Solidity signature string.",
+    params: [
+      function_selector: [
+        kind: :value,
+        description:
+          "A pre-parsed ABI.FunctionSelector struct — a function, error, event, or anonymous (constructor/fallback) fragment."
+      ]
+    ],
+    returns: %{
+      type: :string,
+      description:
+        "Canonical \"name(type1,type2,...)\" string. Tuple types expand to parenthesized member lists ((uint256,address)) and arrays render with []/[N] suffixes. Anonymous fragments (function: nil) format without a leading name."
+    },
+    composes_with: [:parse_specification, :method_id, :event_signature]
+  )
+
+  @doc """
+  Renders an `ABI.FunctionSelector` as its canonical Solidity signature string.
+
+  This is the general-purpose formatter behind `method_id/1` and
+  `event_signature/1` (both hash this exact string): it reuses
+  `ABI.FunctionSelector.encode/1` — the shared sig-builder — so the formatted
+  output can never drift from what gets hashed. First consumers are the
+  `api_manifest.json` CI artifact and error/log messages that would otherwise
+  inspect raw structs.
+
+  Tuple types expand to parenthesized member lists (`(uint256,address)`) and
+  arrays render with `[]` / `[N]` suffixes. Anonymous fragments (constructor,
+  fallback) carry `function: nil` and format without a leading name. Mirrors
+  viem's `formatAbiItem` and round-trips with `FunctionSelector.decode/1` — the
+  produced string re-parses to the same types.
+
+  ## Examples
+
+      iex> ABI.parse_specification([%{"type" => "function", "name" => "transfer", "inputs" => [%{"name" => "to", "type" => "address"}, %{"name" => "amount", "type" => "uint256"}]}])
+      ...> |> hd()
+      ...> |> ABI.format_abi_item()
+      "transfer(address,uint256)"
+
+      iex> ABI.format_abi_item(%ABI.FunctionSelector{
+      ...>   function: "swap",
+      ...>   types: [
+      ...>     %{type: {:tuple, [%{type: :address}, %{type: {:uint, 256}}]}},
+      ...>     %{type: {:array, {:uint, 256}}},
+      ...>     %{type: {:array, :address, 3}}
+      ...>   ]
+      ...> })
+      "swap((address,uint256),uint256[],address[3])"
+
+      iex> ABI.format_abi_item(%ABI.FunctionSelector{function: nil, function_type: :constructor, types: [%{type: {:uint, 8}}]})
+      "(uint8)"
+  """
+  @spec format_abi_item(FunctionSelector.t()) :: String.t()
+  def format_abi_item(%FunctionSelector{} = function_selector) do
+    FunctionSelector.encode(function_selector)
+  end
+
+  api(
     :parse_specification,
     "Parses an ABI specification document into a list of ABI.FunctionSelector structs.",
     params: [

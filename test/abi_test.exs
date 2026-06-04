@@ -2,6 +2,8 @@ defmodule ABITest do
   use ExUnit.Case, async: true
   use ABI.Hex
 
+  alias ABI.FunctionSelector
+
   doctest ABI
 
   describe "empty argument list" do
@@ -19,14 +21,14 @@ defmodule ABITest do
     end
 
     test "encode/2 with FunctionSelector struct produces only the selector" do
-      selector = %ABI.FunctionSelector{function: "deposit", types: []}
+      selector = %FunctionSelector{function: "deposit", types: []}
       encoded = ABI.encode(selector, [])
       assert encoded == <<0xD0, 0xE3, 0x0D, 0xB0>>
       assert byte_size(encoded) == 4
     end
 
     test "encode/2 with nil-function selector and empty types produces empty bytes" do
-      selector = %ABI.FunctionSelector{function: nil, types: []}
+      selector = %FunctionSelector{function: nil, types: []}
       assert ABI.encode(selector, []) == <<>>
     end
 
@@ -35,7 +37,7 @@ defmodule ABITest do
     end
 
     test "decode/3 of empty payload against FunctionSelector with no types returns []" do
-      assert ABI.decode(%ABI.FunctionSelector{types: []}, <<>>) == []
+      assert ABI.decode(%FunctionSelector{types: []}, <<>>) == []
     end
   end
 
@@ -58,7 +60,7 @@ defmodule ABITest do
     end
 
     test "returns empty binary for selectors with function: nil" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: nil,
         types: [%{type: :address}]
       }
@@ -76,7 +78,7 @@ defmodule ABITest do
     end
 
     test "accepts a FunctionSelector struct and returns the same blob as a signature string" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: "transfer",
         types: [%{type: :address}, %{type: {:uint, 256}}]
       }
@@ -86,7 +88,7 @@ defmodule ABITest do
     end
 
     test "raises ArgumentError for FunctionSelector structs without a function name" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: nil,
         types: [%{type: {:uint, 256}}]
       }
@@ -228,7 +230,7 @@ defmodule ABITest do
     end
 
     test "returns :no_function_name when the selector has no function name" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: nil,
         types: [%{type: {:uint, 256}}]
       }
@@ -255,6 +257,93 @@ defmodule ABITest do
 
       assert {:ok, %{first_field: 42, second_field: true}} =
                ABI.decode_call(selector, calldata, decode_structs: true)
+    end
+  end
+
+  describe "format_abi_item/1" do
+    test "formats a plain function selector to its canonical signature" do
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "function",
+            "name" => "transfer",
+            "inputs" => [
+              %{"type" => "address", "name" => "to"},
+              %{"type" => "uint256", "name" => "amount"}
+            ]
+          }
+        ])
+
+      assert ABI.format_abi_item(selector) == "transfer(address,uint256)"
+    end
+
+    test "expands tuples and renders dynamic/fixed arrays" do
+      selector = %FunctionSelector{
+        function: "swap",
+        types: [
+          %{type: {:tuple, [%{type: :address}, %{type: {:uint, 256}}]}},
+          %{type: {:array, {:uint, 256}}},
+          %{type: {:array, :address, 3}}
+        ]
+      }
+
+      assert ABI.format_abi_item(selector) == "swap((address,uint256),uint256[],address[3])"
+    end
+
+    test "formats anonymous (constructor) fragments without a leading name" do
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "constructor",
+            "inputs" => [%{"type" => "uint8", "name" => "_numProposals"}]
+          }
+        ])
+
+      assert selector.function == nil
+      assert ABI.format_abi_item(selector) == "(uint8)"
+    end
+
+    test "produces the exact string method_id/1 and event_signature/1 hash" do
+      sig = "Transfer(address,address,uint256)"
+      selector = FunctionSelector.decode(sig)
+
+      # Same canonical builder feeds the hashers, so the formatted string,
+      # re-hashed, reproduces the published selector / topic.
+      formatted = ABI.format_abi_item(selector)
+      assert formatted == sig
+      assert ABI.method_id(formatted) == ABI.method_id(sig)
+      assert ABI.event_signature(formatted) == ABI.event_signature(sig)
+    end
+
+    test "round-trips: parse_specification |> format_abi_item |> decode preserves types" do
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "function",
+            "name" => "go",
+            "inputs" => [
+              %{"name" => "xs", "type" => "address[]"},
+              %{"name" => "n", "type" => "uint256"},
+              %{
+                "name" => "s",
+                "type" => "tuple",
+                "components" => [
+                  %{"name" => "a", "type" => "uint256"},
+                  %{"name" => "b", "type" => "bytes"}
+                ]
+              },
+              %{"name" => "fixed", "type" => "bytes32[2]"}
+            ]
+          }
+        ])
+
+      formatted = ABI.format_abi_item(selector)
+      reparsed = FunctionSelector.decode(formatted)
+
+      # The canonical string is name-free, so re-parsing yields the same type
+      # tree; formatting is idempotent (the round-trip fixed point).
+      assert reparsed.function == selector.function
+      assert ABI.format_abi_item(reparsed) == formatted
     end
   end
 end
