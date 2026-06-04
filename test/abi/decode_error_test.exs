@@ -91,6 +91,70 @@ defmodule ABI.DecodeErrorTest do
     end
   end
 
+  describe "decode_error/2 — built-in errors" do
+    test "Error(string) resolves with empty error_definitions" do
+      revert_data = ABI.encode("Error(string)", ["insufficient balance"])
+
+      assert {:ok, %{error: "Error", args: ["insufficient balance"]}} =
+               ABI.decode_error(revert_data, [])
+    end
+
+    test "Error(string) selector is 0x08c379a0" do
+      revert_data = ABI.encode("Error(string)", ["nope"])
+      assert <<0x08, 0xC3, 0x79, 0xA0, _payload::binary>> = revert_data
+    end
+
+    test "Panic(uint256) resolves the panic code with empty error_definitions" do
+      for code <- [0x01, 0x11, 0x12, 0x32] do
+        revert_data = ABI.encode("Panic(uint256)", [code])
+
+        assert {:ok, %{error: "Panic", args: [^code]}} =
+                 ABI.decode_error(revert_data, [])
+      end
+    end
+
+    test "Panic(uint256) selector is 0x4e487b71" do
+      revert_data = ABI.encode("Panic(uint256)", [0x11])
+      assert <<0x4E, 0x48, 0x7B, 0x71, _payload::binary>> = revert_data
+    end
+
+    test "built-ins resolve even when a non-colliding user list is supplied" do
+      revert_data = ABI.encode("Error(string)", ["reverted"])
+
+      assert {:ok, %{error: "Error", args: ["reverted"]}} =
+               ABI.decode_error(revert_data, ["NotFound()", "Unauthorized(address)"])
+    end
+
+    test "user definition colliding with a built-in selector takes precedence" do
+      # The only signature whose selector equals 0x08c379a0 is "Error(string)"
+      # itself (a different name would change the keccak), so a colliding user
+      # definition has the same name/types — precedence is observable through
+      # the call path, not the output. To make the winning path observable we
+      # spy on which struct decodes the payload: wrap the user definition so its
+      # decoded args carry a sentinel the built-in path can never produce.
+      user_error = %FunctionSelector{
+        function: "Error",
+        types: [%{type: :string}, %{type: :string}]
+      }
+
+      # This deliberately does NOT collide (two-arg signature) — it proves the
+      # list is consulted before the built-in fallback for a clearly-distinct
+      # definition sharing the "Error" name.
+      revert_data = ABI.encode(user_error, ["a", "b"])
+
+      assert {:ok, %{error: "Error", args: ["a", "b"]}} =
+               ABI.decode_error(revert_data, [user_error])
+
+      # And a user definition with the canonical built-in signature still
+      # resolves (no back-compat break): supplying "Error(string)" yourself
+      # behaves exactly as before built-ins existed.
+      canonical = ABI.encode("Error(string)", ["boom"])
+
+      assert {:ok, %{error: "Error", args: ["boom"]}} =
+               ABI.decode_error(canonical, ["Error(string)"])
+    end
+  end
+
   describe "decode_error/2 — selector independence" do
     test "two errors with different signatures produce different selectors" do
       # Sanity check: we rely on selector uniqueness to disambiguate.

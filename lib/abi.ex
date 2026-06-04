@@ -470,7 +470,7 @@ defmodule ABI do
 
   api(
     :decode_error,
-    "Decodes selector-prefixed revert data against a list of known custom-error definitions.",
+    "Decodes selector-prefixed revert data against known custom-error definitions, plus the Solidity built-in Error(string)/Panic(uint256) errors.",
     params: [
       revert_data: [
         kind: :value,
@@ -480,17 +480,17 @@ defmodule ABI do
       error_definitions: [
         kind: :value,
         description:
-          "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload."
+          "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload. The built-in Error(string) (0x08c379a0) and Panic(uint256) (0x4e487b71) errors are recognized implicitly as a fallback, so they resolve even when this list is empty; a user definition colliding with a built-in selector still wins."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "Tagged tuple. {:ok, %{error: name, args: decoded}} when a definition matches; {:error, reason} otherwise. A malformed payload after a selector match still raises (same contract as decode/3)."
+        "Tagged tuple. {:ok, %{error: name, args: decoded}} when a definition or built-in matches; {:error, reason} otherwise. A malformed payload after a selector match still raises (same contract as decode/3)."
     },
     errors: [
       calldata_too_short: "Fewer than 4 bytes provided.",
-      no_match: "No definition's 4-byte selector matched revert_data[0..3]."
+      no_match: "No definition or built-in selector matched revert_data[0..3]."
     ],
     composes_with: [:decode, :method_id]
   )
@@ -509,13 +509,37 @@ defmodule ABI do
   signature against the revert's 4-byte prefix, decode the payload using
   whichever matches first.
 
+  ## Built-in errors
+
+  Every Solidity revert path emits one of two compiler-defined errors, so they
+  are recognized implicitly — no caller needs to register them, and they resolve
+  even when `error_definitions` is `[]`:
+
+  * `Error(string)` — selector `0x08c379a0`. The standard `require`/`revert`
+    reason string. Decodes to `%{error: "Error", args: [reason]}`.
+  * `Panic(uint256)` — selector `0x4e487b71`. The 0.8.x `assert`/arithmetic
+    panic. Decodes to `%{error: "Panic", args: [code]}`, where `code` is the
+    integer panic code. The standard codes are:
+
+    | Code   | Meaning                                                     |
+    |--------|-------------------------------------------------------------|
+    | `0x01` | `assert` evaluated to `false`                               |
+    | `0x11` | arithmetic overflow or underflow                            |
+    | `0x12` | division or modulo by zero                                  |
+    | `0x32` | array access out of bounds                                  |
+
+  A user-supplied definition whose selector collides with a built-in still wins:
+  `error_definitions` is consulted first, and the built-ins are only a fallback.
+
+  Mirrors viem's `decodeErrorResult`, which resolves `Error`/`Panic` implicitly.
+
   Returns:
 
   * `{:ok, %{error: name, args: decoded}}` — the first definition matching the
-    4-byte selector. `name` is the error's function name; `decoded` matches
-    `decode/3`'s shape (a list of args)
+    4-byte selector, or a built-in error when none does. `name` is the error's
+    function name; `decoded` matches `decode/3`'s shape (a list of args)
   * `{:error, :calldata_too_short}` — fewer than 4 bytes provided
-  * `{:error, :no_match}` — no definition's selector matched
+  * `{:error, :no_match}` — no definition or built-in selector matched
 
   > #### Note {: .info}
   >
@@ -536,6 +560,14 @@ defmodule ABI do
       ...> ])
       {:ok, %{error: "Unauthorized", args: [<<1::160>>]}}
 
+      iex> revert_data = ABI.encode("Error(string)", ["insufficient balance"])
+      iex> ABI.decode_error(revert_data, [])
+      {:ok, %{error: "Error", args: ["insufficient balance"]}}
+
+      iex> revert_data = ABI.encode("Panic(uint256)", [0x11])
+      iex> ABI.decode_error(revert_data, [])
+      {:ok, %{error: "Panic", args: [17]}}
+
       iex> ABI.decode_error(<<0xde, 0xad, 0xbe, 0xef>>, ["NotFound()"])
       {:error, :no_match}
 
@@ -543,6 +575,13 @@ defmodule ABI do
       {:error, :calldata_too_short}
   """
   @typep decode_error_error :: :calldata_too_short | :no_match
+
+  # Compiler-defined Solidity errors, recognized implicitly. Selectors are the
+  # first 4 bytes of keccak256 of the canonical signature.
+  @built_in_errors %{
+    <<0x08, 0xC3, 0x79, 0xA0>> => "Error(string)",
+    <<0x4E, 0x48, 0x7B, 0x71>> => "Panic(uint256)"
+  }
 
   @spec decode_error(binary(), [binary() | FunctionSelector.t()]) ::
           {:ok, %{error: String.t() | nil, args: [any()] | map()}}
@@ -560,10 +599,26 @@ defmodule ABI do
 
     case Enum.find(selectors, fn sel -> method_id(sel) == actual end) do
       nil ->
-        {:error, :no_match}
+        decode_built_in_error(actual, payload)
 
       %FunctionSelector{} = sel ->
         {:ok, %{error: sel.function, args: decode(sel, payload)}}
+    end
+  end
+
+  # Falls back to the compiler-defined Error(string)/Panic(uint256) errors when
+  # no user definition matched. Only reached after error_definitions misses, so
+  # a colliding user definition always wins.
+  @spec decode_built_in_error(binary(), binary()) ::
+          {:ok, %{error: String.t(), args: [any()]}} | {:error, :no_match}
+  defp decode_built_in_error(actual, payload) do
+    case @built_in_errors do
+      %{^actual => signature} ->
+        sel = Parser.parse!(signature)
+        {:ok, %{error: sel.function, args: decode(sel, payload)}}
+
+      _ ->
+        {:error, :no_match}
     end
   end
 
