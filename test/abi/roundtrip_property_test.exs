@@ -11,6 +11,7 @@ defmodule ABI.RoundtripPropertyTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
+  alias ABI.FunctionSelector
   alias ABI.TypeDecoder
   alias ABI.TypeEncoder
 
@@ -20,23 +21,32 @@ defmodule ABI.RoundtripPropertyTest do
 
   # ── Per-type value generators ───────────────────────────────────────────
 
+  @spec uint_value(pos_integer()) :: StreamData.t()
   defp uint_value(size) do
     StreamData.integer(0..(Bitwise.bsl(1, size) - 1))
   end
 
+  @spec int_value(pos_integer()) :: StreamData.t()
   defp int_value(size) do
     StreamData.integer(-Bitwise.bsl(1, size - 1)..(Bitwise.bsl(1, size - 1) - 1))
   end
 
+  @spec address_value() :: StreamData.t()
   defp address_value, do: StreamData.binary(length: 20)
+  @spec bool_value() :: StreamData.t()
   defp bool_value, do: StreamData.boolean()
+  @spec bytes_n_value(pos_integer()) :: StreamData.t()
   defp bytes_n_value(n), do: StreamData.binary(length: n)
+  @spec bytes_value() :: StreamData.t()
   defp bytes_value, do: StreamData.binary(max_length: 64)
+  @spec string_value() :: StreamData.t()
   defp string_value, do: StreamData.string(:utf8, max_length: 64)
+  @spec function_value() :: StreamData.t()
   defp function_value, do: StreamData.binary(length: 24)
 
   # ── Dispatcher: return a generator for any valid type ───────────────────
 
+  @spec value_for(FunctionSelector.type()) :: StreamData.t()
   defp value_for({:uint, size}), do: uint_value(size)
   defp value_for({:int, size}), do: int_value(size)
   defp value_for(:address), do: address_value()
@@ -82,8 +92,10 @@ defmodule ABI.RoundtripPropertyTest do
     {:bytes, 32}
   ]
 
+  @spec leaf_type() :: StreamData.t()
   defp leaf_type, do: StreamData.member_of(@leaf_types)
 
+  @spec type_gen(non_neg_integer()) :: StreamData.t()
   defp type_gen(0), do: leaf_type()
 
   defp type_gen(depth) do
@@ -104,6 +116,7 @@ defmodule ABI.RoundtripPropertyTest do
     ])
   end
 
+  @spec type_and_value_gen(non_neg_integer()) :: StreamData.t()
   defp type_and_value_gen(depth) do
     StreamData.bind(type_gen(depth), fn t ->
       StreamData.map(value_for(t), &{t, &1})
@@ -112,6 +125,7 @@ defmodule ABI.RoundtripPropertyTest do
 
   # ── Round-trip helpers ──────────────────────────────────────────────────
 
+  @spec roundtrip(FunctionSelector.type(), any()) :: any()
   defp roundtrip(type, value) do
     args = [%{type: type}]
     encoded = TypeEncoder.encode_raw([value], args)
@@ -119,6 +133,7 @@ defmodule ABI.RoundtripPropertyTest do
     decoded
   end
 
+  @spec roundtrip_args([FunctionSelector.type()], [any()]) :: [any()]
   defp roundtrip_args(types, values) do
     args = Enum.map(types, &%{type: &1})
     encoded = TypeEncoder.encode_raw(values, args)

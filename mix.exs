@@ -1,6 +1,7 @@
 defmodule ABI.Mixfile do
   use Mix.Project
 
+  @spec project() :: keyword()
   def project do
     [
       app: :hieroglyph,
@@ -35,6 +36,7 @@ defmodule ABI.Mixfile do
     ]
   end
 
+  @spec package() :: keyword()
   defp package do
     [
       name: "hieroglyph",
@@ -49,11 +51,13 @@ defmodule ABI.Mixfile do
     ]
   end
 
+  @spec cli() :: keyword()
   def cli do
     [preferred_envs: ["test.json": :test, "dialyzer.json": :dev]]
   end
 
   # Run "mix help compile.app" to learn about applications.
+  @spec application() :: keyword()
   def application do
     [
       extra_applications: [:logger]
@@ -61,18 +65,58 @@ defmodule ABI.Mixfile do
   end
 
   # Specifies which paths to compile per environment.
+  @spec elixirc_paths(atom()) :: [String.t()]
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  @spec aliases() :: keyword()
   defp aliases do
     [
       tidewave: [
         "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4006) end)'"
-      ]
+      ],
+      # TagTODO/TagFIXME stay on in .credo.exs for visibility; the gate excludes
+      # them so it fails only on real regressions, not tracked debt.
+      "check.fast": [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict --ignore TagTODO,TagFIXME"
+      ],
+      # Manual / CI gate (NOT run by the commit hook). Drops dialyzer; keeps
+      # tests + sobelow + doctor. 95% coverage — this is a wire-format/crypto
+      # encoder (critical business logic).
+      precommit: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict --ignore TagTODO,TagFIXME",
+        "doctor --raise",
+        # `preferred_envs` (cli/0) is ignored for alias steps, and `mix cmd`
+        # runs args via `System.cmd` with no shell (so a `MIX_ENV=test` prefix
+        # is treated as the binary name). Spawn a fresh `mix` in :test instead.
+        &cover_gate/1,
+        "sobelow --skip"
+      ],
+      # CI mirror — adds dialyzer. Matches `elixir-ci-harness` `harness.yml`.
+      "precommit.full": ["precommit", "dialyzer.json --quiet"]
     ]
   end
 
+  # 95% coverage gate. Spawns a child `mix` in :test (alias steps ignore
+  # `cli/0` preferred_envs); a non-zero exit — test failure or sub-threshold
+  # coverage — aborts the precommit run.
+  @spec cover_gate([String.t()]) :: nil
+  defp cover_gate(_args) do
+    args =
+      ~w(test.json --quiet --cover --cover-threshold 95 --summary-only --exclude integration)
+
+    {_out, status} =
+      System.cmd("mix", args, env: [{"MIX_ENV", "test"}], into: IO.stream())
+
+    if status != 0, do: Mix.raise("coverage gate failed (mix test exit #{status})")
+  end
+
   # Run "mix help deps" to learn about dependencies.
+  @spec deps() :: [{atom(), String.t()} | {atom(), String.t(), keyword()}]
   defp deps do
     [
       {:jason, "~> 1.4"},

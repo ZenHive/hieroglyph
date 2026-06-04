@@ -10,6 +10,11 @@ defmodule ABI.TypeEncoder do
   alias ABI.FunctionSelector
   alias ABI.Math
 
+  # A single ABI argument descriptor (`%{type: ..., optional :name}`).
+  @typep arg_type :: FunctionSelector.argument_type()
+  # head/tail reducer accumulator: `{head, tail, remaining_data, tail_offset}`.
+  @typep tuple_acc :: {binary(), binary(), [any()], non_neg_integer()}
+
   api(
     :encode,
     "Encode a list of values into ABI calldata using the given FunctionSelector, prefixing the 4-byte selector when the function name is set.",
@@ -249,6 +254,7 @@ defmodule ABI.TypeEncoder do
       do_encode_data(data, function_selector)
   end
 
+  @spec do_encode_data([any()], FunctionSelector.t()) :: binary()
   defp do_encode_data(data, %FunctionSelector{function: nil} = function_selector) do
     encode_raw(data, function_selector.types)
   end
@@ -452,6 +458,7 @@ defmodule ABI.TypeEncoder do
     raise "Unsupported encoding type: #{inspect(els)}"
   end
 
+  @spec encode_tuple_element(arg_type(), tuple_acc()) :: tuple_acc()
   defp encode_tuple_element(argument_type, {head, tail, data, tail_position}) do
     type = argument_type.type
     {el, rest} = encode_type(type, data)
@@ -479,6 +486,7 @@ defmodule ABI.TypeEncoder do
   # encoded in-place without a length prefix, arrays delegate to packed_array
   # (which DOES pad each element to 32 bytes per the spec).
 
+  @spec packed_top(FunctionSelector.type(), any()) :: binary()
   defp packed_top({:uint, size}, value), do: pack_uint(value, size)
 
   defp packed_top({:int, size}, value), do: pack_int(value, size)
@@ -534,6 +542,7 @@ defmodule ABI.TypeEncoder do
   # Inside-array packed encoding: each element padded to 32 bytes (per spec).
   # Nested arrays and tuples raise — neither is supported.
 
+  @spec packed_array(FunctionSelector.type(), [any()]) :: binary()
   defp packed_array({:array, _, _}, _) do
     raise ArgumentError, "encode_packed: nested arrays are not supported by Solidity's packed mode"
   end
@@ -564,12 +573,14 @@ defmodule ABI.TypeEncoder do
     end)
   end
 
+  @spec pad_right_to_32_multiple(binary()) :: binary()
   defp pad_right_to_32_multiple(bin) when is_binary(bin) do
     size = byte_size(bin)
     pad = Math.mod(32 - Math.mod(size, 32), 32)
     bin <> :binary.copy(<<0>>, pad)
   end
 
+  @spec pack_uint(integer() | binary(), pos_integer()) :: binary()
   defp pack_uint(int, bits) when is_integer(int) and rem(bits, 8) == 0 and bits > 0 and bits <= 256 do
     if int < 0 do
       raise ArgumentError, "encode_packed uint#{bits}: negative value #{int}"
@@ -599,6 +610,7 @@ defmodule ABI.TypeEncoder do
     :binary.copy(<<0>>, pad_size) <> bin
   end
 
+  @spec pack_int(integer(), pos_integer()) :: binary()
   defp pack_int(int, bits) when is_integer(int) and rem(bits, 8) == 0 and bits > 0 and bits <= 256 do
     max = Bitwise.bsl(1, bits - 1)
 
@@ -614,6 +626,7 @@ defmodule ABI.TypeEncoder do
     end
   end
 
+  @spec encode_int(integer(), pos_integer()) :: binary()
   defp encode_int(int, desired_size_bits) when rem(desired_size_bits, 8) == 0 and is_integer(int) do
     desired_size_bytes = ceil(desired_size_bits / 8)
     max = Bitwise.bsl(1, desired_size_bits - 1)
@@ -640,6 +653,7 @@ defmodule ABI.TypeEncoder do
 
   # Note, we'll accept a binary or an integer here, so long as the
   # binary is not longer than our allowed data size
+  @spec encode_uint(integer() | binary(), pos_integer()) :: binary()
   defp encode_uint(data, size_in_bits) when rem(size_in_bits, 8) == 0 do
     size_in_bytes = round(size_in_bits / 8)
     bin = maybe_encode_unsigned(data)
@@ -651,12 +665,14 @@ defmodule ABI.TypeEncoder do
   end
 
   # Returns the total number of static types, accounting for inlined tuples
+  @spec count([arg_type()]) :: non_neg_integer()
   defp count(sub_types) do
     sub_types
     |> Enum.map(&do_count/1)
     |> Enum.sum()
   end
 
+  @spec do_count(arg_type()) :: non_neg_integer()
   defp do_count(%{type: {:tuple, sub_types} = t}) do
     if FunctionSelector.dynamic?(t) do
       1
@@ -669,6 +685,7 @@ defmodule ABI.TypeEncoder do
 
   defp do_count(_), do: 1
 
+  @spec data_to_list([arg_type()], [any()] | tuple() | map()) :: [any()]
   defp data_to_list(_types, data) when is_list(data), do: data
   defp data_to_list(_types, data) when is_tuple(data), do: Tuple.to_list(data)
 
@@ -676,6 +693,7 @@ defmodule ABI.TypeEncoder do
     Enum.map(types, &fetch_named_field(&1, data))
   end
 
+  @spec fetch_named_field(arg_type(), map()) :: any()
   defp fetch_named_field(type, data) do
     if type[:name] do
       fetch_by_name(type, data)
@@ -684,6 +702,7 @@ defmodule ABI.TypeEncoder do
     end
   end
 
+  @spec fetch_by_name(arg_type(), map()) :: any()
   defp fetch_by_name(type, data) do
     name = type[:name]
     underscored = Macro.underscore(name)
@@ -702,6 +721,7 @@ defmodule ABI.TypeEncoder do
     end
   end
 
+  @spec atom_in_map?({:ok, atom()} | :error, map()) :: boolean()
   defp atom_in_map?({:ok, atom}, data), do: Map.has_key?(data, atom)
   defp atom_in_map?(:error, _data), do: false
 

@@ -51,6 +51,10 @@ defmodule ABI.FunctionSelector do
           returns: type() | [argument_type()] | nil
         }
 
+  # An ABI JSON parameter object: a string-keyed map (`"name"`, `"type"`,
+  # `"indexed"`, `"components"`) as produced by decoding ABI JSON.
+  @typep spec_param :: %{optional(String.t()) => term()}
+
   defstruct [:function, :function_type, :state_mutability, :types, :returns]
 
   api(
@@ -371,6 +375,7 @@ defmodule ABI.FunctionSelector do
     }
   end
 
+  @spec parse_specification_type(spec_param()) :: argument_type()
   defp parse_specification_type(%{"name" => name, "indexed" => indexed} = record) do
     %{name: name, type: parse_specification_type_type(record), indexed: indexed}
   end
@@ -387,6 +392,7 @@ defmodule ABI.FunctionSelector do
     %{type: parse_specification_type_type(record)}
   end
 
+  @spec parse_specification_type_type(spec_param()) :: type()
   defp parse_specification_type_type(%{"type" => "tuple[]", "components" => components}) do
     {:array, {:tuple, Enum.map(components, &parse_specification_type/1)}}
   end
@@ -533,6 +539,7 @@ defmodule ABI.FunctionSelector do
     "#{function_selector.function}(#{types})"
   end
 
+  @spec get_types(t(), boolean(), boolean()) :: [String.t()]
   defp get_types(function_selector, indexed, names) do
     for {%{type: type} = t, i} <- Enum.with_index(function_selector.types) do
       indexed_postfix = if indexed and Map.get(t, :indexed, false), do: " indexed", else: ""
@@ -541,6 +548,13 @@ defmodule ABI.FunctionSelector do
     end
   end
 
+  @spec get_type(
+          type()
+          | nil
+          | {:fixed, non_neg_integer(), non_neg_integer()}
+          | {:ufixed, non_neg_integer(), non_neg_integer()}
+          | {:struct, String.t(), [type()], [String.t()]}
+        ) :: String.t() | nil
   defp get_type(nil), do: nil
   defp get_type({:int, size}), do: "int#{size}"
   defp get_type({:uint, size}), do: "uint#{size}"

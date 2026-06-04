@@ -71,6 +71,15 @@ defmodule ABI.Event do
 
   @typep length_pair :: %{got: non_neg_integer(), expected: non_neg_integer()}
 
+  # Decoded argument map keyed by parameter name; values are decoded ABI
+  # values, or `{:indexed_hash, <<32 bytes>>}` for reference-typed topics.
+  @typep decoded_map :: %{optional(String.t()) => term()}
+  # A list of ABI argument descriptors (the `:types` of a FunctionSelector).
+  @typep arg_types :: [FunctionSelector.argument_type()]
+  # The `topics[0]` verification failure, mirrored from `t:decode_error/0`.
+  @typep sig_mismatch ::
+           {:event_signature_mismatch, %{expected: binary(), got: binary()}}
+
   @doc ~S"""
   Decodes an event, including handling parsing out data from topics.
 
@@ -201,12 +210,15 @@ defmodule ABI.Event do
     end
   end
 
+  @spec decode_indexed_topics(arg_types(), [binary()]) :: decoded_map()
   defp decode_indexed_topics(indexed_types_full, topics) do
     indexed_types_full
     |> Enum.zip(topics)
     |> Map.new(fn {type, topic} -> {type.name, decode_indexed(type, topic)} end)
   end
 
+  @spec decode_non_indexed(binary(), arg_types()) ::
+          {:ok, decoded_map()} | {:error, {:malformed_data, String.t()}}
   defp decode_non_indexed(data, non_indexed_types) do
     tuple_type = [%{type: {:tuple, non_indexed_types}}]
     [non_indexed_data] = TypeDecoder.decode_raw(data, tuple_type)
@@ -222,6 +234,8 @@ defmodule ABI.Event do
     e -> {:error, {:malformed_data, Exception.message(e)}}
   end
 
+  @spec maybe_verify(decoded_map(), FunctionSelector.t(), boolean()) ::
+          {:ok, decoded_map()} | {:error, sig_mismatch()}
   defp maybe_verify(indexed_data, function_selector, true) do
     verify_event_signature(indexed_data, function_selector)
   end
@@ -230,6 +244,8 @@ defmodule ABI.Event do
     {:ok, indexed_data}
   end
 
+  @spec decode_indexed(FunctionSelector.argument_type(), binary()) ::
+          {:indexed_hash, binary()} | term()
   defp decode_indexed(param, topic) do
     if reference_type?(param.type) do
       {:indexed_hash, topic}
@@ -247,6 +263,7 @@ defmodule ABI.Event do
   # `FunctionSelector.dynamic?/1` — that predicate answers the ABI
   # head/tail question and says `uint256[2]` is static, but the event
   # encoding rule hashes it all the same.
+  @spec reference_type?(FunctionSelector.type()) :: boolean()
   defp reference_type?(:string), do: true
   defp reference_type?(:bytes), do: true
   defp reference_type?({:array, _}), do: true
@@ -254,6 +271,8 @@ defmodule ABI.Event do
   defp reference_type?({:tuple, _}), do: true
   defp reference_type?(_), do: false
 
+  @spec verify_event_signature(decoded_map(), FunctionSelector.t()) ::
+          {:ok, decoded_map()} | {:error, sig_mismatch()}
   defp verify_event_signature(indexed_data, function_selector) do
     {got, res} = Map.pop(indexed_data, "__abi__topic")
     expected = event_signature(function_selector)

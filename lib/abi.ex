@@ -458,6 +458,10 @@ defmodule ABI do
     end
   end
 
+  # An error definition: a signature string or a pre-parsed selector.
+  @typep error_definition :: String.t() | FunctionSelector.t()
+
+  @spec normalize_error_definition(error_definition()) :: FunctionSelector.t()
   defp normalize_error_definition(sig) when is_binary(sig), do: Parser.parse!(sig)
   defp normalize_error_definition(%FunctionSelector{} = sel), do: sel
 

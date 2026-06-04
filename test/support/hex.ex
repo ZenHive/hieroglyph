@@ -364,6 +364,7 @@ defmodule ABI.Hex do
   end
 
   @doc false
+  @spec deep_encode_binaries(any()) :: any()
   def deep_encode_binaries(x) when is_binary(x), do: to_hex(x)
   def deep_encode_binaries(l) when is_list(l), do: Enum.map(l, &deep_encode_binaries/1)
 
