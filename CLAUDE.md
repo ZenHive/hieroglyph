@@ -1,17 +1,16 @@
-@~/.claude/includes/across-instances.md
 @~/.claude/includes/critical-rules.md
-@~/.claude/includes/task-prioritization.md
-@~/.claude/includes/task-writing.md
-@~/.claude/includes/workflow-philosophy.md
-@~/.claude/includes/web-command.md
-@~/.claude/includes/elixir-setup.md
-@~/.claude/includes/ex-unit-json.md
-@~/.claude/includes/dialyzer-json.md
-@~/.claude/includes/code-style.md
-@~/.claude/includes/development-commands.md
-@~/.claude/includes/development-philosophy.md
 @~/.claude/includes/upstream-pr-workflow.md
-@~/.claude/includes/agent-economy.md
+
+<!--
+  Selective-load (Opus 4.8): eager floor is `critical-rules` only; `upstream-pr-workflow`
+  stays eager because this fork actively files PRs upstream (see "Upstream Issue Monitoring").
+  Everything else is skill-on-demand — task-prioritization → elixir:roadmap-planning,
+  task-writing → task-driver:task-writing, workflow-philosophy → dev-lifecycle:workflow-philosophy,
+  worktree-workflow → elixir:git-worktrees, web-command/ex-unit-json/dialyzer-json/code-style/
+  development-commands/development-philosophy/elixir-setup/agent-economy → elixir:*.
+  Delegation + across-instances intentionally omitted (work/library repo, no cloud-agent usage).
+  Re-add an `@`-import only if Opus quality drops on that surface.
+-->
 
 
 # ABI

@@ -21,7 +21,16 @@ defmodule ABI.Mixfile do
       start_permanent: Mix.env() == :prod,
       compilers: [:yecc, :leex] ++ Mix.compilers(),
       aliases: aliases(),
-      dialyzer: [plt_add_apps: [:mix, :descripex]],
+      # OOM mitigation: :apps_direct skips transitive dep recursion (default
+      # :app_tree). Tidewave/bandit's HTTP stack (plug, finch, mint, gun,
+      # cowlib, etc.) is not in lib/'s call graph. priv/plts/ survives `mix
+      # clean` / _build wipes.
+      dialyzer: [
+        plt_add_deps: :apps_direct,
+        plt_add_apps: [:mix, :descripex],
+        plt_local_path: "priv/plts",
+        plt_core_path: "priv/plts"
+      ],
       deps: deps()
     ]
   end
@@ -76,11 +85,11 @@ defmodule ABI.Mixfile do
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
-      {:doctor, "~> 0.22", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.23", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.10", only: :dev},
-      {:ex_dna, "~> 1.3", only: [:dev, :test], runtime: false},
-      {:ex_ast, "~> 0.5", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: :test}
     ]
   end
