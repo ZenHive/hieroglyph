@@ -346,4 +346,63 @@ defmodule ABITest do
       assert ABI.format_abi_item(reparsed) == formatted
     end
   end
+
+  describe "strict decode mode" do
+    test "decode/3 rejects non-zero uint high padding when strict" do
+      bad_uint8 = <<1::248, 5>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(uint8)", bad_uint8, strict: true)
+    end
+
+    test "decode/3 rejects invalid int sign extension when strict" do
+      bad_int8 = <<0::248, 0xFF>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(int8)", bad_int8, strict: true)
+    end
+
+    test "decode/3 rejects non-zero bool high padding when strict" do
+      bad_bool = <<1::248, 1>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(bool)", bad_bool, strict: true)
+    end
+
+    test "decode/3 rejects trailing bytes when strict" do
+      payload = ABI.encode("(uint256)", [{1}]) <> <<0>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(uint256)", payload, strict: true)
+    end
+
+    test "decode/3 rejects string length prefixes beyond available data when strict" do
+      payload = <<32::256, 5::256, "abc">>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(string)", payload, strict: true)
+    end
+
+    test "decode/3 rejects bytes length prefixes beyond available data when strict" do
+      payload = <<32::256, 5::256, 1, 2, 3>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode("(bytes)", payload, strict: true)
+    end
+
+    test "decode/3 keeps permissive default behavior" do
+      bad_uint8 = <<1::248, 5>>
+
+      assert [decoded] = ABI.decode("(uint8)", bad_uint8)
+      assert decoded == :binary.decode_unsigned(bad_uint8)
+    end
+
+    test "decode_call/3 returns strict violations as tagged errors" do
+      payload = <<1::248, 5>>
+      calldata = ABI.method_id("set(uint8)") <> payload
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode_call("set(uint8)", calldata, strict: true)
+    end
+  end
 end

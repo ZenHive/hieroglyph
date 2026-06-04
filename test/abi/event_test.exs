@@ -255,5 +255,18 @@ defmodule ABI.EventTest do
           flunk("Expected {:error, {:malformed_data, _}}, got #{inspect(other)}")
       end
     end
+
+    test "returns strict violation when non-indexed payload is non-canonical in strict mode" do
+      selector = %FunctionSelector{
+        function: "Small",
+        types: [%{type: {:uint, 8}, name: "amount"}]
+      }
+
+      topics = [Event.event_signature(selector)]
+      bad_uint8 = <<1::248, 5>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               Event.decode_event(bad_uint8, topics, selector, strict: true)
+    end
   end
 end

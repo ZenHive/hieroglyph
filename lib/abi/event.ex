@@ -12,6 +12,7 @@ defmodule ABI.Event do
   alias ABI.FunctionSelector
   alias ABI.Math
   alias ABI.TypeDecoder
+  alias ABI.TypeDecoder.StrictViolation
   alias ABI.TypeEncoder
 
   api(
@@ -37,7 +38,7 @@ defmodule ABI.Event do
         kind: :value,
         default: [],
         description:
-          "Optional keyword list. Supports check_event_signature: false to skip topics[0] verification (anonymous events or pre-stripped topics)"
+          "Optional keyword list. Supports check_event_signature: false to skip topics[0] verification (anonymous events or pre-stripped topics), and strict: true to reject non-canonical payloads."
       ]
     ],
     returns: %{
@@ -51,7 +52,8 @@ defmodule ABI.Event do
       topics_length_mismatch:
         "Number of topics did not match the indexed-parameter count (plus topics[0] when check_event_signature is true). Reason payload: %{got: integer, expected: integer}.",
       malformed_data:
-        "Non-indexed payload bytes failed to decode (truncated, wrong type, or otherwise inconsistent with the function_selector types). Reason payload: a human-readable string describing the underlying decode failure."
+        "Non-indexed payload bytes failed to decode (truncated, wrong type, or otherwise inconsistent with the function_selector types). Reason payload: a human-readable string describing the underlying decode failure.",
+      strict_violation: "strict: true rejected a non-canonical payload."
     ],
     composes_with: [:event_signature]
   )
@@ -64,11 +66,14 @@ defmodule ABI.Event do
     (plus the implicit `topics[0]` slot when `check_event_signature: true`).
   * `:malformed_data` — non-indexed payload failed to decode (truncated, wrong types, or
     otherwise inconsistent with `function_selector.types`).
+  * `:strict_violation` — `strict: true` rejected non-canonical padding, trailing
+    bytes, or string/bytes length prefixes beyond the available data.
   """
   @type decode_error ::
           {:event_signature_mismatch, %{expected: binary(), got: binary()}}
           | {:topics_length_mismatch, length_pair()}
           | {:malformed_data, String.t()}
+          | {:strict_violation, term()}
 
   @typep length_pair :: %{got: non_neg_integer(), expected: non_neg_integer()}
 
@@ -243,6 +248,18 @@ defmodule ABI.Event do
   @spec decode_event(binary(), [binary()], FunctionSelector.t(), keyword()) ::
           {:ok, String.t() | nil, map()} | {:error, decode_error()}
   def decode_event(data, topics, function_selector, opts \\ []) do
+    do_decode_event(data, topics, function_selector, opts)
+  rescue
+    e in StrictViolation -> {:error, {:strict_violation, e.detail}}
+  end
+
+  @spec do_decode_event(
+          binary(),
+          [binary()],
+          FunctionSelector.t(),
+          keyword()
+        ) :: {:ok, String.t() | nil, map()} | {:error, decode_error()}
+  defp do_decode_event(data, topics, function_selector, opts) do
     check_event_signature = Keyword.get(opts, :check_event_signature, true)
 
     # First, split the types into indexed and not indexed
@@ -260,13 +277,14 @@ defmodule ABI.Event do
     actual_count = Enum.count(topics)
 
     if expected_count == actual_count do
-      indexed_data = decode_indexed_topics(indexed_types_full, topics)
+      indexed_data = decode_indexed_topics(indexed_types_full, topics, opts)
 
       verified =
         maybe_verify(indexed_data, function_selector, check_event_signature)
 
       with {:ok, idx} <- verified,
-           {:ok, non_idx} <- decode_non_indexed(data, non_indexed_types) do
+           {:ok, non_idx} <-
+             decode_non_indexed(data, non_indexed_types, opts) do
         {:ok, function_selector.function, Map.merge(idx, non_idx)}
       end
     else
@@ -275,18 +293,21 @@ defmodule ABI.Event do
     end
   end
 
-  @spec decode_indexed_topics(arg_types(), [binary()]) :: decoded_map()
-  defp decode_indexed_topics(indexed_types_full, topics) do
+  @spec decode_indexed_topics(arg_types(), [binary()], keyword()) ::
+          decoded_map()
+  defp decode_indexed_topics(indexed_types_full, topics, opts) do
     indexed_types_full
     |> Enum.zip(topics)
-    |> Map.new(fn {type, topic} -> {type.name, decode_indexed(type, topic)} end)
+    |> Map.new(fn {type, topic} ->
+      {type.name, decode_indexed(type, topic, opts)}
+    end)
   end
 
-  @spec decode_non_indexed(binary(), arg_types()) ::
+  @spec decode_non_indexed(binary(), arg_types(), keyword()) ::
           {:ok, decoded_map()} | {:error, {:malformed_data, String.t()}}
-  defp decode_non_indexed(data, non_indexed_types) do
+  defp decode_non_indexed(data, non_indexed_types, opts) do
     tuple_type = [%{type: {:tuple, non_indexed_types}}]
-    [non_indexed_data] = TypeDecoder.decode_raw(data, tuple_type)
+    [non_indexed_data] = TypeDecoder.decode_raw(data, tuple_type, opts)
 
     map =
       non_indexed_data
@@ -296,6 +317,7 @@ defmodule ABI.Event do
 
     {:ok, map}
   rescue
+    e in StrictViolation -> reraise e, __STACKTRACE__
     e -> {:error, {:malformed_data, Exception.message(e)}}
   end
 
@@ -309,13 +331,13 @@ defmodule ABI.Event do
     {:ok, indexed_data}
   end
 
-  @spec decode_indexed(FunctionSelector.argument_type(), binary()) ::
+  @spec decode_indexed(FunctionSelector.argument_type(), binary(), keyword()) ::
           {:indexed_hash, binary()} | term()
-  defp decode_indexed(param, topic) do
+  defp decode_indexed(param, topic, opts) do
     if reference_type?(param.type) do
       {:indexed_hash, topic}
     else
-      [value] = TypeDecoder.decode_raw(topic, [param])
+      [value] = TypeDecoder.decode_raw(topic, [param], opts)
       value
     end
   end

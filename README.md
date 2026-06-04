@@ -55,6 +55,8 @@ iex> ABI.decode("baz(uint,address)", "000000000000000000000000000000000000000000
 [50, <<1::160>> |> :binary.decode_unsigned]
 ```
 
+Security note: decoding remains permissive by default for backwards compatibility. For adversarial calldata, pass `strict: true` to `ABI.decode/3`, `ABI.decode_call/3`, `ABI.decode_event/4`, or `ABI.decode_error/3` to reject non-canonical integer/bool padding, trailing bytes after the declared payload, and string/bytes length prefixes that exceed the available data. Strict failures return `{:error, {:strict_violation, detail}}`.
+
 #### Pre-interning atoms for `decode_structs: true`
 
 When the ABI carries field names, you can opt into a map-shaped result keyed by snake_case atoms:

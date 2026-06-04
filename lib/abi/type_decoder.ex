@@ -11,6 +11,23 @@ defmodule ABI.TypeDecoder do
   alias ABI.FunctionSelector
   alias ABI.Math
 
+  @word_size_bytes 32
+  @word_size_bits @word_size_bytes * 8
+
+  defmodule StrictViolation do
+    @moduledoc false
+
+    defexception [:detail, :message]
+
+    @impl true
+    def exception(detail) do
+      %__MODULE__{
+        detail: detail,
+        message: "strict ABI decode violation: #{inspect(detail)}"
+      }
+    end
+  end
+
   api(
     :decode,
     "Decode an ABI-encoded payload into a list of values, using a FunctionSelector to drive type interpretation.",
@@ -258,7 +275,13 @@ defmodule ABI.TypeDecoder do
           [any()],
           keyword()
         ) :: [any()]
-  defp do_decode([], bin, _, _opts) when byte_size(bin) > 0, do: raise("Found extra binary data: #{inspect(bin)}")
+  defp do_decode([], bin, _, opts) when byte_size(bin) > 0 do
+    if strict?(opts) do
+      strict_violation!({:trailing_bytes, byte_size(bin)})
+    else
+      raise("Found extra binary data: #{inspect(bin)}")
+    end
+  end
 
   defp do_decode([], _, acc, _opts), do: Enum.reverse(acc)
 
@@ -270,37 +293,40 @@ defmodule ABI.TypeDecoder do
 
   @spec decode_type(FunctionSelector.type(), binary(), keyword()) ::
           {any(), binary()}
-  defp decode_type({:uint, size_in_bits}, data, _opts) do
-    decode_uint(data, size_in_bits)
+  defp decode_type({:uint, size_in_bits}, data, opts) do
+    decode_uint(data, size_in_bits, opts)
   end
 
-  defp decode_type({:int, size_in_bits}, data, _opts) do
-    decode_int(data, size_in_bits)
+  defp decode_type({:int, size_in_bits}, data, opts) do
+    decode_int(data, size_in_bits, opts)
   end
 
   defp decode_type(:address, data, _opts), do: decode_bytes(data, 20, :left)
 
   defp decode_type(:function, data, _opts), do: decode_bytes(data, 24, :right)
 
-  defp decode_type(:bool, data, _opts) do
-    {encoded_value, rest} = decode_uint(data, 8)
+  defp decode_type(:bool, data, opts) do
+    {encoded_value, rest} = decode_uint(data, 8, opts)
 
     value =
       case encoded_value do
         1 -> true
         0 -> false
+        other -> decode_invalid_bool!(other, opts)
       end
 
     {value, rest}
   end
 
-  defp decode_type(:string, data, _opts) do
-    {string_size_in_bytes, rest} = decode_uint(data, 256)
+  defp decode_type(:string, data, opts) do
+    {string_size_in_bytes, rest} = decode_uint(data, 256, opts)
+    validate_dynamic_length!(rest, string_size_in_bytes, :string, opts)
     decode_bytes(rest, string_size_in_bytes, :right)
   end
 
-  defp decode_type(:bytes, data, _opts) do
-    {byte_size, rest} = decode_uint(data, 256)
+  defp decode_type(:bytes, data, opts) do
+    {byte_size, rest} = decode_uint(data, 256, opts)
+    validate_dynamic_length!(rest, byte_size, :bytes, opts)
     decode_bytes(rest, byte_size, :right)
   end
 
@@ -311,7 +337,7 @@ defmodule ABI.TypeDecoder do
   end
 
   defp decode_type({:array, type}, data, opts) do
-    {element_count, rest} = decode_uint(data, 256)
+    {element_count, rest} = decode_uint(data, 256, opts)
     decode_type({:array, type, element_count}, rest, opts)
   end
 
@@ -440,21 +466,143 @@ defmodule ABI.TypeDecoder do
     end
   end
 
-  @spec decode_uint(binary(), integer()) :: {integer(), binary()}
-  defp decode_uint(data, size_in_bits) do
-    total_bit_size = size_in_bits + Math.mod(256 - size_in_bits, 256)
+  @spec decode_uint(binary(), integer(), keyword()) :: {integer(), binary()}
+  defp decode_uint(data, size_in_bits, opts) do
+    validate_uint_padding!(data, size_in_bits, opts)
+    total_bit_size = size_in_bits + Math.mod(@word_size_bits - size_in_bits, @word_size_bits)
 
     <<value::integer-size(^total_bit_size), rest::binary>> = data
 
     {value, rest}
   end
 
-  @spec decode_int(binary(), integer()) :: {integer(), binary()}
-  defp decode_int(data, size_in_bits) do
-    total_bit_size = size_in_bits + Math.mod(256 - size_in_bits, 256)
+  @spec decode_int(binary(), integer(), keyword()) :: {integer(), binary()}
+  defp decode_int(data, size_in_bits, opts) do
+    validate_int_padding!(data, size_in_bits, opts)
+    total_bit_size = size_in_bits + Math.mod(@word_size_bits - size_in_bits, @word_size_bits)
     <<value::integer-signed-big-size(^total_bit_size), rest::binary>> = data
 
     {value, rest}
+  end
+
+  @spec strict?(keyword()) :: boolean()
+  defp strict?(opts), do: Keyword.get(opts, :strict, false)
+
+  @spec strict_violation!(term()) :: no_return()
+  defp strict_violation!(detail) do
+    raise StrictViolation, detail
+  end
+
+  @spec decode_invalid_bool!(integer(), keyword()) :: no_return()
+  defp decode_invalid_bool!(value, opts) do
+    if strict?(opts) do
+      strict_violation!({:invalid_bool, value})
+    else
+      raise CaseClauseError, term: value
+    end
+  end
+
+  @spec validate_uint_padding!(binary(), integer(), keyword()) :: :ok
+  defp validate_uint_padding!(data, size_in_bits, opts) do
+    validate_left_padding!(
+      data,
+      size_in_bits,
+      :zero,
+      {:uint, size_in_bits},
+      opts
+    )
+  end
+
+  @spec validate_int_padding!(binary(), integer(), keyword()) :: :ok
+  defp validate_int_padding!(data, size_in_bits, opts) do
+    validate_left_padding!(
+      data,
+      size_in_bits,
+      :sign,
+      {:int, size_in_bits},
+      opts
+    )
+  end
+
+  @spec validate_left_padding!(
+          binary(),
+          integer(),
+          :zero | :sign,
+          term(),
+          keyword()
+        ) :: :ok
+  defp validate_left_padding!(_data, @word_size_bits, _mode, _type, _opts), do: :ok
+
+  defp validate_left_padding!(data, size_in_bits, mode, type, opts) do
+    if strict?(opts) do
+      value_size = div(size_in_bits, 8)
+      padding_size = @word_size_bytes - value_size
+
+      {padding, value} = split_left_padded(data, padding_size, value_size)
+
+      expected = expected_left_padding(mode, padding_size, value)
+
+      if padding == expected do
+        :ok
+      else
+        strict_violation!({:non_canonical_padding, %{type: type}})
+      end
+    else
+      :ok
+    end
+  end
+
+  @spec expected_left_padding(:zero | :sign, non_neg_integer(), binary()) ::
+          binary()
+  defp expected_left_padding(:zero, padding_size, _value) do
+    :binary.copy(<<0>>, padding_size)
+  end
+
+  defp expected_left_padding(:sign, padding_size, value) do
+    <<sign::1, _::bitstring>> = value
+    fill = if sign == 1, do: <<0xFF>>, else: <<0>>
+    :binary.copy(fill, padding_size)
+  end
+
+  @spec split_left_padded(binary(), non_neg_integer(), non_neg_integer()) ::
+          {binary(), binary()}
+  defp split_left_padded(data, padding_size, value_size) do
+    <<padding::binary-size(^padding_size), after_padding::binary>> = data
+    <<value::binary-size(^value_size), _rest::binary>> = after_padding
+
+    {padding, value}
+  end
+
+  @spec validate_dynamic_length!(
+          binary(),
+          non_neg_integer(),
+          atom(),
+          keyword()
+        ) :: :ok
+  defp validate_dynamic_length!(data, size_in_bytes, type, opts) do
+    if strict?(opts) do
+      total_size =
+        size_in_bytes +
+          Math.mod(
+            @word_size_bytes - Math.mod(size_in_bytes, @word_size_bytes),
+            @word_size_bytes
+          )
+
+      if byte_size(data) >= total_size do
+        :ok
+      else
+        strict_violation!(
+          {:length_out_of_bounds,
+           %{
+             type: type,
+             length: size_in_bytes,
+             available: byte_size(data)
+           }}
+        )
+      end
+    else
+      :ok
+    end
   end
 
   api(

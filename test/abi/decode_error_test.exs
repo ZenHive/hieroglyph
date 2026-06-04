@@ -3,7 +3,7 @@ defmodule ABI.DecodeErrorTest do
 
   alias ABI.FunctionSelector
 
-  doctest ABI, only: [decode_error: 2]
+  doctest ABI, only: [decode_error: 3]
 
   describe "decode_error/2 — selector match" do
     test "single-error definition: matches and decodes args" do
@@ -88,6 +88,14 @@ defmodule ABI.DecodeErrorTest do
       assert_raise MatchError, fn ->
         ABI.decode_error(revert_data, ["InsufficientBalance(uint256,uint256)"])
       end
+    end
+
+    test "returns strict violation for non-canonical payload when strict" do
+      selector = ABI.method_id("Bad(uint8)")
+      revert_data = selector <> <<1::248, 5>>
+
+      assert {:error, {:strict_violation, _detail}} =
+               ABI.decode_error(revert_data, ["Bad(uint8)"], strict: true)
     end
   end
 

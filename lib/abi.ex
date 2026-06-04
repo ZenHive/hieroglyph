@@ -36,6 +36,7 @@ defmodule ABI do
   alias ABI.Math
   alias ABI.Parser
   alias ABI.TypeDecoder
+  alias ABI.TypeDecoder.StrictViolation
   alias ABI.TypeEncoder
 
   api(:encode, "Encodes the given data into the function signature or tuple signature.",
@@ -305,7 +306,7 @@ defmodule ABI do
       opts: [
         kind: :value,
         description:
-          "Keyword options. decode_structs: true returns a map keyed by snake_case atoms derived from parameter names instead of a list. Field-name atoms must already exist in the VM atom table — reference them in your code (e.g., a module attribute or compile-time list) before calling, otherwise decode raises ArgumentError. This bounds atom creation to your declared field set."
+          "Keyword options. decode_structs: true returns a map keyed by snake_case atoms derived from parameter names instead of a list. strict: true rejects non-canonical padding, trailing bytes, and dynamic length overruns with {:error, {:strict_violation, detail}}. Field-name atoms must already exist in the VM atom table — reference them in your code (e.g., a module attribute or compile-time list) before calling, otherwise decode raises ArgumentError. This bounds atom creation to your declared field set."
       ]
     ],
     returns: %{
@@ -329,6 +330,10 @@ defmodule ABI do
       calls `String.to_existing_atom/1` and raises `ArgumentError` when an
       atom has not been interned. See the README "Pre-interning atoms for
       `decode_structs: true`" section for the one-liner migration.
+    * `:strict` — when `true`, rejects non-canonical bool/uint/int padding,
+      trailing bytes after the declared payload, and string/bytes length
+      prefixes that exceed the available data. Strict failures return
+      `{:error, {:strict_violation, detail}}`.
 
   ## Examples
 
@@ -361,7 +366,7 @@ defmodule ABI do
       %{a: 10, b: true}
   """
   @spec decode(binary() | FunctionSelector.t(), binary(), keyword()) ::
-          [any()] | map()
+          [any()] | map() | {:error, {:strict_violation, term()}}
   def decode(function_signature, data, opts \\ [])
 
   def decode(function_signature, data, opts) when is_binary(function_signature) do
@@ -376,6 +381,8 @@ defmodule ABI do
     else
       res
     end
+  rescue
+    e in StrictViolation -> {:error, {:strict_violation, e.detail}}
   end
 
   api(
@@ -394,7 +401,7 @@ defmodule ABI do
       ],
       opts: [
         kind: :value,
-        description: "Keyword options forwarded to decode/3."
+        description: "Keyword options forwarded to decode/3, including strict: true."
       ]
     ],
     returns: %{
@@ -405,7 +412,8 @@ defmodule ABI do
     errors: [
       calldata_too_short: "Fewer than 4 bytes provided.",
       selector_mismatch: "First 4 bytes do not match the expected selector.",
-      no_function_name: "Selector has function: nil — there is no selector to verify against; use decode/3 directly."
+      no_function_name: "Selector has function: nil — there is no selector to verify against; use decode/3 directly.",
+      strict_violation: "strict: true rejected a non-canonical payload."
     ],
     composes_with: [:decode, :method_id]
   )
@@ -425,6 +433,8 @@ defmodule ABI do
   * `{:error, :selector_mismatch}` — first 4 bytes don't match the expected selector
   * `{:error, :no_function_name}` — the selector has `function: nil`, so there's no
     selector to verify against; use `decode/3` with the payload directly
+  * `{:error, {:strict_violation, detail}}` — `strict: true` rejected a
+    non-canonical payload
 
   > #### Note {: .info}
   >
@@ -452,7 +462,10 @@ defmodule ABI do
       {:error, :no_function_name}
   """
   @typep decode_call_error ::
-           :calldata_too_short | :selector_mismatch | :no_function_name
+           :calldata_too_short
+           | :selector_mismatch
+           | :no_function_name
+           | {:strict_violation, term()}
 
   @spec decode_call(binary() | FunctionSelector.t(), binary(), keyword()) ::
           {:ok, [any()] | map()} | {:error, decode_call_error()}
@@ -475,7 +488,10 @@ defmodule ABI do
     <<actual::binary-size(4), payload::binary>> = calldata
 
     if actual == expected do
-      {:ok, decode(function_selector, payload, opts)}
+      case decode(function_selector, payload, opts) do
+        {:error, {:strict_violation, _detail}} = error -> error
+        decoded -> {:ok, decoded}
+      end
     else
       {:error, :selector_mismatch}
     end
@@ -548,6 +564,11 @@ defmodule ABI do
         kind: :value,
         description:
           "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload. The built-in Error(string) (0x08c379a0) and Panic(uint256) (0x4e487b71) errors are recognized implicitly as a fallback, so they resolve even when this list is empty; a user definition colliding with a built-in selector still wins."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description: "Keyword options forwarded to decode/3, including strict: true."
       ]
     ],
     returns: %{
@@ -557,7 +578,8 @@ defmodule ABI do
     },
     errors: [
       calldata_too_short: "Fewer than 4 bytes provided.",
-      no_match: "No definition or built-in selector matched revert_data[0..3]."
+      no_match: "No definition or built-in selector matched revert_data[0..3].",
+      strict_violation: "strict: true rejected a non-canonical payload."
     ],
     composes_with: [:decode, :method_id]
   )
@@ -607,6 +629,8 @@ defmodule ABI do
     function name; `decoded` matches `decode/3`'s shape (a list of args)
   * `{:error, :calldata_too_short}` — fewer than 4 bytes provided
   * `{:error, :no_match}` — no definition or built-in selector matched
+  * `{:error, {:strict_violation, detail}}` — `strict: true` rejected a
+    non-canonical payload
 
   > #### Note {: .info}
   >
@@ -641,7 +665,8 @@ defmodule ABI do
       iex> ABI.decode_error(<<0xa9, 0x05>>, ["NotFound()"])
       {:error, :calldata_too_short}
   """
-  @typep decode_error_error :: :calldata_too_short | :no_match
+  @typep decode_error_error ::
+           :calldata_too_short | :no_match | {:strict_violation, term()}
 
   # Compiler-defined Solidity errors, recognized implicitly. Selectors are the
   # first 4 bytes of keccak256 of the canonical signature.
@@ -650,39 +675,50 @@ defmodule ABI do
     <<0x4E, 0x48, 0x7B, 0x71>> => "Panic(uint256)"
   }
 
-  @spec decode_error(binary(), [binary() | FunctionSelector.t()]) ::
+  @spec decode_error(binary(), [binary() | FunctionSelector.t()], keyword()) ::
           {:ok, %{error: String.t() | nil, args: [any()] | map()}}
           | {:error, decode_error_error()}
-  def decode_error(revert_data, error_definitions)
+  def decode_error(revert_data, error_definitions, opts \\ [])
 
-  def decode_error(revert_data, _error_definitions) when byte_size(revert_data) < 4 do
+  def decode_error(revert_data, _error_definitions, _opts) when byte_size(revert_data) < 4 do
     {:error, :calldata_too_short}
   end
 
-  def decode_error(revert_data, error_definitions) when is_list(error_definitions) do
+  def decode_error(revert_data, error_definitions, opts) when is_list(error_definitions) do
     <<actual::binary-size(4), payload::binary>> = revert_data
 
     selectors = Enum.map(error_definitions, &normalize_error_definition/1)
 
     case Enum.find(selectors, fn sel -> method_id(sel) == actual end) do
       nil ->
-        decode_built_in_error(actual, payload)
+        decode_built_in_error(actual, payload, opts)
 
       %FunctionSelector{} = sel ->
-        {:ok, %{error: sel.function, args: decode(sel, payload)}}
+        decode_error_args(sel, payload, opts)
+    end
+  end
+
+  @spec decode_error_args(FunctionSelector.t(), binary(), keyword()) ::
+          {:ok, %{error: String.t() | nil, args: [any()] | map()}}
+          | {:error, {:strict_violation, term()}}
+  defp decode_error_args(sel, payload, opts) do
+    case decode(sel, payload, opts) do
+      {:error, {:strict_violation, _detail}} = error -> error
+      decoded -> {:ok, %{error: sel.function, args: decoded}}
     end
   end
 
   # Falls back to the compiler-defined Error(string)/Panic(uint256) errors when
   # no user definition matched. Only reached after error_definitions misses, so
   # a colliding user definition always wins.
-  @spec decode_built_in_error(binary(), binary()) ::
-          {:ok, %{error: String.t(), args: [any()]}} | {:error, :no_match}
-  defp decode_built_in_error(actual, payload) do
+  @spec decode_built_in_error(binary(), binary(), keyword()) ::
+          {:ok, %{error: String.t(), args: [any()]}}
+          | {:error, :no_match | {:strict_violation, term()}}
+  defp decode_built_in_error(actual, payload, opts) do
     case @built_in_errors do
       %{^actual => signature} ->
         sel = Parser.parse!(signature)
-        {:ok, %{error: sel.function, args: decode(sel, payload)}}
+        decode_error_args(sel, payload, opts)
 
       _ ->
         {:error, :no_match}
