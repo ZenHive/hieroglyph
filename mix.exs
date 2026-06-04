@@ -42,7 +42,7 @@ defmodule ABI.Mixfile do
       name: "hieroglyph",
       maintainers: ["ZenHive"],
       licenses: ["MIT"],
-      files: ~w(lib src mix.exs README.md CHANGELOG.md LICENSE.md .formatter.exs),
+      files: ~w(lib src skills mix.exs README.md CHANGELOG.md LICENSE.md .formatter.exs),
       links: %{
         "GitHub" => "https://github.com/ZenHive/hieroglyph",
         "Changelog" => "https://github.com/ZenHive/hieroglyph/blob/main/CHANGELOG.md",
