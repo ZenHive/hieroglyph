@@ -1037,6 +1037,135 @@
       "body": "Decimal fixed-point types. Rarely seen in real contracts; Solidity itself does not fully support fixed-point types, so there is nothing real-world to encode against. High cost (encoder + decoder + range validation), low payoff. DEFERRED unless a downstream consumer surfaces a concrete need — currently rejected at parse time (task 2) for clarity.",
       "scored_at": "2026-05-01",
       "cross_repo": []
+    },
+    {
+      "id": 40,
+      "phase": 5,
+      "bundle": "peer_parity",
+      "status": "pending",
+      "title": "Built-in Error(string) / Panic(uint256) auto-decoding in decode_error/2",
+      "scores": {
+        "d": 2,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 3.5,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "0x08c379a0 revert blob decodes to the Error(string) reason with empty error_definitions",
+        "0x4e487b71 revert blob decodes to the Panic(uint256) code with empty error_definitions",
+        "A user-supplied definition colliding with a built-in selector takes precedence (no back-compat break)",
+        "Unknown selector with no matching definition still returns the existing not-found error shape",
+        "@doc lists the standard panic codes (0x01 assert, 0x11 overflow, 0x12 div-by-zero, 0x32 array-oob)",
+        "CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
+      ],
+      "body": "decode_error/2 currently only matches user-supplied error definitions, so the two Solidity built-in errors every revert path emits must be hand-defined by each caller. Auto-recognize them before consulting the supplied list: selector 0x08c379a0 = Error(string) (the standard require/revert reason string), selector 0x4e487b71 = Panic(uint256) (0.8.x assert/overflow/div-zero panic codes). First consumer: signet / transaction-builder RPC error paths that get a raw revert blob and need a human-readable reason without registering the built-ins themselves. Mirrors viem decodeErrorResult, which resolves Error/Panic implicitly. Built-ins resolve even when error_definitions is []; a user definition that collides with a built-in selector still wins (back-compat). Return shape matches the existing decode_error/2 tuple. Consider exposing the panic-code integer (not just the uint) so callers can map 0x01/0x11/0x12/0x32 to meaning, or document the codes in @doc.",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": 41,
+      "phase": 5,
+      "bundle": "peer_parity",
+      "status": "pending",
+      "title": "ABI.encode_constructor/2 (deploy-time argument encoding)",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.67,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "encode_constructor/2 returns selector-LESS ABI-encoded args for a constructor selector + values",
+        "Accepts %FunctionSelector{function_type: :constructor}; rejects non-constructor selectors with a clear error",
+        "Output round-trips through decode/3 against the constructor's parsed types",
+        "Empty-args constructor returns <<>>",
+        "api() declaration present",
+        "README Usage gets a deploy-encoding example; CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
+      ],
+      "body": "Constructors parse today (function_type: :constructor via parse_specification) but there is no helper to encode their arguments for a deploy. Add encode_constructor/2 taking a %FunctionSelector{function_type: :constructor} (constructors have no name, so no signature-string clause) plus the arg values, returning the ABI-encoded args with NO 4-byte selector prefix — the caller concatenates contract_bytecode <> encoded_args to form deploy calldata. First consumer: transaction builders that deploy contracts (the one encode path the library can't currently produce). Mirrors viem encodeDeployData (bytecode + abi + args); we scope to just the args blob and leave bytecode concatenation to the caller. Reuse TypeEncoder head/tail packing — this is encode/2 minus the selector. Reject a non-constructor selector with a clear error. Round-trips against decode/3 on the constructor's types. api() declaration.",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": 42,
+      "phase": 5,
+      "bundle": "peer_parity",
+      "status": "pending",
+      "title": "ABI.format_abi_item/1 (FunctionSelector -> canonical signature string)",
+      "scores": {
+        "d": 3,
+        "b": 3,
+        "u": 4
+      },
+      "eff": 1.17,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "format_abi_item/1 returns the canonical signature string for a function selector",
+        "Tuple types expand to parenthesized member lists; arrays render with [] / [N] suffixes",
+        "Round-trips: parse_specification |> format_abi_item produces a string FunctionSelector.decode/1 re-parses to the same types",
+        "event_signature/1 reuses the same shared sig-builder (no logic duplication)",
+        "api() declaration present",
+        "CHANGELOG entry under [Unreleased]"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
+      ],
+      "body": "event_signature/1 and method_id/1 both build a canonical signature string internally but there is no general FunctionSelector -> string formatter for functions/errors/constructors. Add format_abi_item/1 returning the canonical \"name(type1,type2,...)\" string for any %FunctionSelector{}, with tuple types expanded to \"(uint256,address)\" form and arrays rendered as \"uint256[]\" / \"uint256[3]\". First consumer: the manifest CI artifact (api_manifest.json diffing) and error/log messages that today inspect raw structs. Extract the shared sig-building logic that event_signature/1 already uses so the two don't drift. Mirrors viem formatAbiItem. Anonymous/unnamed fragments (constructor) format without a leading name. Pure function; api() declaration.",
+      "created_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
+    },
+    {
+      "id": 43,
+      "phase": 5,
+      "bundle": "agent_economy",
+      "status": "in_progress",
+      "title": "SKILL.md for AI-agent consumers of the ABI library",
+      "scores": {
+        "d": 3,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 2.0,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "SKILL.md exists with a trigger description line and explicit when-to-use / when-not-to-use",
+        "Includes a worked intent-to-calldata recipe (e.g. ERC-20 transfer) using ABI.encode_call/3",
+        "Documents the encode/decode function-selection decision map and the keyed-map vs tuple input shapes",
+        "References api()/describe for runtime introspection instead of duplicating every signature",
+        "Captures the documented gotchas (string_keys, indexed reference-type hashing, decode_structs to_existing_atom requirement)",
+        "Placement decision recorded (project-local vs marketplace-synced) with rationale in the task close-out or CHANGELOG"
+      ],
+      "domains": [
+        "abi",
+        "elixir"
+      ],
+      "body": "Write a consumer-facing SKILL.md targeting AI agents that CALL this library to build/decode Ethereum calldata — not developers maintaining it. This is the agent-economy surface the library already invests in (api()/describe, __descripex_modules__, the hieroglyph.manifest task) made directly skill-invocable. First consumer: a Claude/agent session in a downstream transaction-builder repo that needs to go from intent ('transfer 100 USDC to 0x..') to selector-prefixed calldata without reading the source. Cover the decision map (encode/2 vs encode_call/3 vs encode_packed/2; decode/3 vs decode_call/3 vs decode_event/4 vs decode_error/2), the parse_specification/1 entry point for full contract ABIs, the keyed-map vs tuple input shapes, the function/constructor/error/event function_type distinctions, and the common gotchas already documented in CLAUDE.md (string-keys opt, NUL handling, indexed reference-type event hashing, to_existing_atom decode_structs requirement). Point at api()/describe for runtime introspection rather than duplicating signatures. Mirror the structure of the existing elixir:* skills (description trigger line + when-to-use + worked example). Decide placement: a project skill under the repo vs a marketplace skill synced from an include — note that hieroglyph is a published hex package, so a co-located skill that ships with consumers is the higher-value target. Keep it task-oriented (recipes), not an API dump.",
+      "created_at": "2026-06-04",
+      "started_at": "2026-06-04",
+      "scored_at": "2026-06-04",
+      "cross_repo": []
     }
   ]
 }

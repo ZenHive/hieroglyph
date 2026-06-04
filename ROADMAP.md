@@ -9,7 +9,7 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (3 of 8 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (3 of 12 done · 1 in progress)
 
 **Last shipped:** Task 34 — ABI.encode_call/3 (selector-prefixed calldata) on 2026-06-04
 
@@ -57,6 +57,10 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 | Task 37 | ⬜ | 🎁 **peer_parity** · ABI.get_abi_item/3 (lookup helper over parse_specification output) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
 | Task 38 | ⬜ | 🎁 **peer_parity** · Strict-decode mode (strict: true opt) [D:5/B:6/U:4 → Eff:1.0?] 📋 |
 | Task 39 | ⬜ | 🎁 **peer_parity** · Implement fixed<M>x<N> / ufixed<M>x<N> [D:8/B:3/U:2 → Eff:0.31?] ⚠️ |
+| Task 40 | ⬜ | 🎁 **peer_parity** · Built-in Error(string) / Panic(uint256) auto-decoding in decode_error/2 [D:2/B:7/U:7 → Eff:3.5] 🎯 |
+| Task 41 | ⬜ | 🎁 **peer_parity** · ABI.encode_constructor/2 (deploy-time argument encoding) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+| Task 42 | ⬜ | 🎁 **peer_parity** · ABI.format_abi_item/1 (FunctionSelector -> canonical signature string) [D:3/B:3/U:4 → Eff:1.17] 📋 |
+| Task 43 | 🔄 | 🎁 **agent_economy** · SKILL.md for AI-agent consumers of the ABI library [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
