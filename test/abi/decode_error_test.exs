@@ -125,21 +125,16 @@ defmodule ABI.DecodeErrorTest do
                ABI.decode_error(revert_data, ["NotFound()", "Unauthorized(address)"])
     end
 
-    test "user definition colliding with a built-in selector takes precedence" do
-      # The only signature whose selector equals 0x08c379a0 is "Error(string)"
-      # itself (a different name would change the keccak), so a colliding user
-      # definition has the same name/types — precedence is observable through
-      # the call path, not the output. To make the winning path observable we
-      # spy on which struct decodes the payload: wrap the user definition so its
-      # decoded args carry a sentinel the built-in path can never produce.
+    test "user definitions are consulted before the built-in fallback" do
+      # A non-canonical Error(...) definition proves the user list wins before
+      # the built-in fallback when its distinct selector matches. The exact
+      # built-in signature is also accepted explicitly below, preserving the
+      # pre-existing user-supplied Error(string) path.
       user_error = %FunctionSelector{
         function: "Error",
         types: [%{type: :string}, %{type: :string}]
       }
 
-      # This deliberately does NOT collide (two-arg signature) — it proves the
-      # list is consulted before the built-in fallback for a clearly-distinct
-      # definition sharing the "Error" name.
       revert_data = ABI.encode(user_error, ["a", "b"])
 
       assert {:ok, %{error: "Error", args: ["a", "b"]}} =

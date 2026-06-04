@@ -144,13 +144,13 @@ defmodule ABITest do
     end
 
     test "empty-args constructor returns the empty binary" do
-      selector = %ABI.FunctionSelector{function_type: :constructor, types: []}
+      selector = %FunctionSelector{function_type: :constructor, types: []}
 
       assert ABI.encode_constructor(selector, []) == <<>>
     end
 
     test "accepts a constructor selector even when a stray function name is present" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: "ignored",
         function_type: :constructor,
         types: [%{type: {:uint, 256}}]
@@ -160,7 +160,7 @@ defmodule ABITest do
     end
 
     test "raises ArgumentError for a non-constructor selector" do
-      selector = %ABI.FunctionSelector{
+      selector = %FunctionSelector{
         function: "transfer",
         function_type: :function,
         types: []
