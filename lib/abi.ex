@@ -1063,6 +1063,101 @@ defmodule ABI do
   end
 
   api(
+    :get_abi_item,
+    "Finds an ABI fragment by name with optional input-type disambiguation for overloads.",
+    params: [
+      abi: [
+        kind: :value,
+        description: "Parsed ABI specification — the list returned by parse_specification/1."
+      ],
+      name: [
+        kind: :value,
+        description: "Fragment name to match against FunctionSelector.function."
+      ],
+      arg_types: [
+        kind: :value,
+        description:
+          "Optional list of internal input types (e.g. [:address, {:uint, 256}]) matching FunctionSelector.types type fields. Pass nil when the name is unique or to surface {:ambiguous, _} on overloads."
+      ]
+    ],
+    returns: %{
+      type: :union,
+      description:
+        "{:ok, %FunctionSelector{}} on a unique match (by name alone, or name + arg_types). {:error, :not_found} when nothing matches. {:error, {:ambiguous, selectors}} when multiple fragments share the name and arg_types is nil or still ambiguous."
+    },
+    errors: [
+      not_found: "No fragment matches the given name (and arg types, when provided).",
+      ambiguous:
+        "Multiple fragments share the name; pass arg_types listing each input's internal type atom to pick the overload."
+    ],
+    composes_with: [:parse_specification]
+  )
+
+  @doc """
+  Finds an ABI fragment by name in a parsed specification list.
+
+  Operates on the output of `parse_specification/1`. When several fragments
+  share a name (Solidity overloads, or a function and event with the same
+  label), pass `arg_types` — a list of internal type atoms matching each
+  input's `type` field (e.g. `[:address, {:uint, 256}]`) — to select the
+  intended overload. Mirrors viem's `getAbiItem`.
+
+  ## Examples
+
+      iex> abi =
+      ...>   ABI.parse_specification([
+      ...>     %{"type" => "function", "name" => "transfer", "inputs" => [
+      ...>       %{"type" => "address"},
+      ...>       %{"type" => "uint256"}
+      ...>     ]}
+      ...>   ])
+      iex> {:ok, %ABI.FunctionSelector{function: "transfer"}} = ABI.get_abi_item(abi, "transfer", nil)
+
+      iex> abi =
+      ...>   ABI.parse_specification([
+      ...>     %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]},
+      ...>     %{"type" => "function", "name" => "pick", "inputs" => [
+      ...>       %{"type" => "uint256"},
+      ...>       %{"type" => "address"}
+      ...>     ]}
+      ...>   ])
+      iex> {:error, {:ambiguous, _}} = ABI.get_abi_item(abi, "pick", nil)
+      iex> {:ok, %ABI.FunctionSelector{types: [%{type: {:uint, 256}}, %{type: :address}]}} =
+      ...>   ABI.get_abi_item(abi, "pick", [{:uint, 256}, :address])
+
+      iex> abi = ABI.parse_specification([%{"type" => "function", "name" => "only", "inputs" => []}])
+      iex> ABI.get_abi_item(abi, "missing", nil)
+      {:error, :not_found}
+  """
+  @spec get_abi_item([FunctionSelector.t()], String.t(), [FunctionSelector.type()] | nil) ::
+          {:ok, FunctionSelector.t()}
+          | {:error, :not_found}
+          | {:error, {:ambiguous, [FunctionSelector.t()]}}
+  def get_abi_item(abi, name, arg_types) when is_list(abi) and is_binary(name) do
+    abi
+    |> Enum.filter(fn %FunctionSelector{function: fun} -> fun == name end)
+    |> resolve_abi_item_matches(arg_types)
+  end
+
+  @spec resolve_abi_item_matches([FunctionSelector.t()], [FunctionSelector.type()] | nil) ::
+          {:ok, FunctionSelector.t()}
+          | {:error, :not_found}
+          | {:error, {:ambiguous, [FunctionSelector.t()]}}
+  defp resolve_abi_item_matches([], _arg_types), do: {:error, :not_found}
+  defp resolve_abi_item_matches([selector], _arg_types), do: {:ok, selector}
+
+  defp resolve_abi_item_matches(matches, nil), do: {:error, {:ambiguous, matches}}
+
+  defp resolve_abi_item_matches(matches, arg_types) when is_list(arg_types) do
+    matches
+    |> Enum.filter(&(input_types(&1) == arg_types))
+    |> resolve_abi_item_matches(nil)
+  end
+
+  @spec input_types(FunctionSelector.t()) :: [FunctionSelector.type()]
+  defp input_types(%FunctionSelector{types: types}), do: Enum.map(types, & &1.type)
+
+  api(
     :parse_specification,
     "Parses an ABI specification document into a list of ABI.FunctionSelector structs.",
     params: [

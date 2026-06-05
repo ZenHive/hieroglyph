@@ -148,4 +148,20 @@ defmodule ABI.AgentEconomyTest do
       assert meta[:namespace] == "/math"
     end
   end
+
+  describe "mix hieroglyph.manifest" do
+    test "writes descripex JSON to a custom output path" do
+      out = Path.join(System.tmp_dir!(), "manifest_#{System.unique_integer([:positive])}.json")
+
+      try do
+        Mix.Task.reenable("hieroglyph.manifest")
+        Mix.Task.run("hieroglyph.manifest", [out])
+
+        assert %{"modules" => modules} = Jason.decode!(File.read!(out))
+        assert Enum.any?(modules, &(&1["module"] == "ABI"))
+      after
+        File.rm(out)
+      end
+    end
+  end
 end

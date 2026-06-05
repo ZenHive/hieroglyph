@@ -260,6 +260,133 @@ defmodule ABITest do
     end
   end
 
+  describe "get_abi_item/3" do
+    test "returns {:ok, selector} for a unique name match" do
+      abi =
+        ABI.parse_specification([
+          %{
+            "type" => "function",
+            "name" => "transfer",
+            "inputs" => [
+              %{"type" => "address", "name" => "to"},
+              %{"type" => "uint256", "name" => "amount"}
+            ]
+          }
+        ])
+
+      assert {:ok, %FunctionSelector{function: "transfer"}} =
+               ABI.get_abi_item(abi, "transfer", nil)
+    end
+
+    test "returns {:error, :not_found} when no fragment matches the name" do
+      abi =
+        ABI.parse_specification([
+          %{"type" => "function", "name" => "only", "inputs" => []}
+        ])
+
+      assert {:error, :not_found} = ABI.get_abi_item(abi, "missing", nil)
+    end
+
+    test "returns {:error, {:ambiguous, _}} for overloads without arg_types" do
+      abi =
+        ABI.parse_specification([
+          %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]},
+          %{
+            "type" => "function",
+            "name" => "pick",
+            "inputs" => [
+              %{"type" => "uint256"},
+              %{"type" => "address"}
+            ]
+          }
+        ])
+
+      assert {:error, {:ambiguous, matches}} = ABI.get_abi_item(abi, "pick", nil)
+      assert length(matches) == 2
+      assert Enum.all?(matches, &match?(%FunctionSelector{function: "pick"}, &1))
+    end
+
+    test "arg_types disambiguates overloads to the matching arity and types" do
+      abi =
+        ABI.parse_specification([
+          %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]},
+          %{
+            "type" => "function",
+            "name" => "pick",
+            "inputs" => [
+              %{"type" => "uint256"},
+              %{"type" => "address"}
+            ]
+          }
+        ])
+
+      assert {:ok, %FunctionSelector{types: [%{type: {:uint, 256}}]}} =
+               ABI.get_abi_item(abi, "pick", [{:uint, 256}])
+
+      assert {:ok,
+              %FunctionSelector{
+                types: [%{type: {:uint, 256}}, %{type: :address}]
+              }} =
+               ABI.get_abi_item(abi, "pick", [{:uint, 256}, :address])
+    end
+
+    test "returns {:error, :not_found} when arg_types match no overload" do
+      abi =
+        ABI.parse_specification([
+          %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]},
+          %{
+            "type" => "function",
+            "name" => "pick",
+            "inputs" => [
+              %{"type" => "uint256"},
+              %{"type" => "address"}
+            ]
+          }
+        ])
+
+      assert {:error, :not_found} = ABI.get_abi_item(abi, "pick", [:address])
+    end
+
+    test "disambiguates tuple and array input types" do
+      abi =
+        ABI.parse_specification([
+          %{
+            "type" => "function",
+            "name" => "go",
+            "inputs" => [%{"type" => "address[]"}]
+          },
+          %{
+            "type" => "function",
+            "name" => "go",
+            "inputs" => [
+              %{
+                "type" => "tuple",
+                "components" => [
+                  %{"type" => "uint256"},
+                  %{"type" => "bytes"}
+                ]
+              }
+            ]
+          }
+        ])
+
+      assert {:ok, %FunctionSelector{types: [%{type: {:array, :address}}]}} =
+               ABI.get_abi_item(abi, "go", [{:array, :address}])
+
+      assert {:ok,
+              %FunctionSelector{
+                types: [
+                  %{
+                    type: {:tuple, [%{type: {:uint, 256}}, %{type: :bytes}]}
+                  }
+                ]
+              }} =
+               ABI.get_abi_item(abi, "go", [
+                 {:tuple, [%{type: {:uint, 256}}, %{type: :bytes}]}
+               ])
+    end
+  end
+
   describe "format_abi_item/1" do
     test "formats a plain function selector to its canonical signature" do
       [selector] =
