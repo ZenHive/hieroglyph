@@ -347,6 +347,15 @@ defmodule ABITest do
       assert {:error, :not_found} = ABI.get_abi_item(abi, "pick", [:address])
     end
 
+    test "returns {:error, :not_found} when arg_types miss a unique name match" do
+      abi =
+        ABI.parse_specification([
+          %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]}
+        ])
+
+      assert {:error, :not_found} = ABI.get_abi_item(abi, "pick", [:address])
+    end
+
     test "disambiguates tuple and array input types" do
       abi =
         ABI.parse_specification([

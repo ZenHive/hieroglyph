@@ -634,7 +634,7 @@ shipped_in = "3c78a2707b1f2d2ea883e8fbdb4865c8706915e7"
 id = 37
 phase = 5
 bundle = "peer_parity"
-status = "pending"
+status = "done"
 assignee = "cursor"
 domains = ["abi", "elixir"]
 title = "ABI.get_abi_item/3 (lookup helper over parse_specification output)"
@@ -649,6 +649,11 @@ acceptance_criteria = [
   "api() declaration present",
   "CHANGELOG entry under [Unreleased]",
 ]
+implemented = "Landed by harness task 37: ABI.get_abi_item/3 looks up parsed ABI fragments by name, returns not_found/ambiguous tagged errors, supports arg_types disambiguation including tuple and array types, emits Descripex api() metadata, updates api_manifest.json and CHANGELOG, and includes regression coverage for unique-name arg_types mismatches."
+delivered_by = "harness"
+verified = true
+done_at = "2026-06-05"
+shipped_in = "e5c400fea020f23ffbebe1a09bc2a88bfce6e8c2"
 
 [[task]]
 id = 38

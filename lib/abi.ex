@@ -1144,15 +1144,15 @@ defmodule ABI do
           | {:error, :not_found}
           | {:error, {:ambiguous, [FunctionSelector.t()]}}
   defp resolve_abi_item_matches([], _arg_types), do: {:error, :not_found}
-  defp resolve_abi_item_matches([selector], _arg_types), do: {:ok, selector}
-
-  defp resolve_abi_item_matches(matches, nil), do: {:error, {:ambiguous, matches}}
 
   defp resolve_abi_item_matches(matches, arg_types) when is_list(arg_types) do
     matches
     |> Enum.filter(&(input_types(&1) == arg_types))
     |> resolve_abi_item_matches(nil)
   end
+
+  defp resolve_abi_item_matches([selector], nil), do: {:ok, selector}
+  defp resolve_abi_item_matches(matches, nil), do: {:error, {:ambiguous, matches}}
 
   @spec input_types(FunctionSelector.t()) :: [FunctionSelector.type()]
   defp input_types(%FunctionSelector{types: types}), do: Enum.map(types, & &1.type)
