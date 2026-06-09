@@ -9,7 +9,7 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (9 of 12 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (10 of 12 done · 0 in progress)
 
 **Last shipped:** Task 37 — ABI.get_abi_item/3 (lookup helper over parse_specification output) on 2026-06-05
 
@@ -55,7 +55,7 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 | Task 35 | ⬜ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 36 | ✅ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_event_topics/2 (event log topic filter builder) [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 37 | ✅ | 🎁 **peer_parity** · ABI.get_abi_item/3 (lookup helper over parse_specification output) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
-| Task 38 | ⬜ | 🎁 **peer_parity** · Strict-decode mode (strict: true opt) [D:5/B:6/U:4 → Eff:1.0?] 📋 |
+| Task 38 | ✅ | 🎁 **peer_parity** · Strict-decode mode (strict: true opt) [D:5/B:6/U:4 → Eff:1.0?] 📋 |
 | Task 39 | ⬜ | 🎁 **peer_parity** · Implement fixed<M>x<N> / ufixed<M>x<N> [D:8/B:3/U:2 → Eff:0.31?] ⚠️ |
 | Task 40 | ✅ | 🎁 **peer_parity** · Built-in Error(string) / Panic(uint256) auto-decoding in decode_error/2 [D:2/B:7/U:7 → Eff:3.5] 🎯 |
 | Task 41 | ✅ | 🎁 **peer_parity** · ABI.encode_constructor/2 (deploy-time argument encoding) [D:3/B:5/U:5 → Eff:1.67] 🚀 |

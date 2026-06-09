@@ -990,7 +990,7 @@
       "id": 38,
       "phase": 5,
       "bundle": "peer_parity",
-      "status": "pending",
+      "status": "done",
       "title": "Strict-decode mode (strict: true opt)",
       "scores": {
         "d": 5,
@@ -1015,8 +1015,12 @@
         "abi",
         "elixir"
       ],
+      "shipped_in": "e42e5d050472c312f77ecae8b954f0b5c2d6f5a5",
       "body": "Defense-in-depth opt for adversarial-calldata callers. When strict: true, reject: non-zero high padding bits on bool/uint/int (must be zero/sign-extended), trailing bytes after the declared payload (currently silently ignored), string/bytes length prefixes that don't match available data. Default strict: false keeps existing behavior for back-compat. Apply across decode/3, decode_call/3, decode_event/4, decode_error/2. Mirrors eth-abi's strict_mode and viem's strict flag. New errors: {:error, {:strict_violation, _detail}}.",
       "scored_at": "2026-05-01",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1780596896829-245ef7b0, e42e5d050472c312f77ecae8b954f0b5c2d6f5a5).",
+      "delivered_by": "codex",
+      "verified": true,
       "cross_repo": []
     },
     {
