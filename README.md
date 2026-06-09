@@ -16,7 +16,7 @@ The package can be installed by adding `hieroglyph` to your list of dependencies
 ```elixir
 def deps do
   [
-    {:hieroglyph, "~> 1.0"}
+    {:hieroglyph, "~> 1.5"}
   ]
 end
 ```
@@ -111,12 +111,12 @@ iex> ABI.decode_call("transfer(address,uint256)", <<0xa9, 0x05>>)
 
 Returns `{:ok, decoded}` on selector match, or `{:error, :calldata_too_short | :selector_mismatch | :no_function_name}`. A malformed payload after a valid selector still raises — same contract as `decode/3`.
 
-### Decoding custom errors (Solidity 0.8.4+)
+### Encoding and decoding custom errors (Solidity 0.8.4+)
 
-Solidity 0.8.4 introduced [custom errors](https://soliditylang.org/blog/2021/04/21/custom-errors/) — the revert data is selector-prefixed exactly like calldata, with the selector being `keccak256("ErrorName(types...)")[0..3]`. `ABI.decode_error/2` matches the first 4 bytes of `revert_data` against a list of known error definitions and decodes the payload of whichever matches first. Definition order is the disambiguation lever — the first matching selector wins.
+Solidity 0.8.4 introduced [custom errors](https://soliditylang.org/blog/2021/04/21/custom-errors/) — the revert data is selector-prefixed exactly like calldata, with the selector being `keccak256("ErrorName(types...)")[0..3]`. `ABI.decode_error/2` matches the first 4 bytes of `revert_data` against a list of known error definitions and decodes the payload of whichever matches first. Definition order is the disambiguation lever — the first matching selector wins. `ABI.encode_error/3` is the encode-side counterpart (test harnesses, RPC mocks, contract fuzzers) — it builds the selector-prefixed revert blob and raises `ArgumentError` for an unnamed selector.
 
 ```elixir
-iex> revert = ABI.encode("InsufficientBalance(uint256,uint256)", [10, 100])
+iex> revert = ABI.encode_error("InsufficientBalance(uint256,uint256)", [10, 100])
 iex> ABI.decode_error(revert, [
 ...>   "Unauthorized(address)",
 ...>   "InsufficientBalance(uint256,uint256)",
@@ -126,6 +126,16 @@ iex> ABI.decode_error(revert, [
 ```
 
 Returns `{:ok, %{error: name, args: [...]}}` on a hit, or `{:error, :no_match | :calldata_too_short}`. Like `decode_call/3`, a malformed payload after a successful selector match still raises. Each definition in the list can be a signature string or a pre-parsed `FunctionSelector` struct (mixed accepted).
+
+The two Solidity **built-in** errors are recognized implicitly — `Error(string)` (selector `0x08c379a0`, the standard `require`/`revert` reason string) and `Panic(uint256)` (selector `0x4e487b71`, the 0.8.x `assert`/arithmetic panic) decode even when `error_definitions` is `[]`, so you don't hand-define them. A user definition whose selector collides with a built-in still wins — `error_definitions` is consulted first.
+
+```elixir
+iex> ABI.decode_error(ABI.encode("Error(string)", ["insufficient balance"]), [])
+{:ok, %{error: "Error", args: ["insufficient balance"]}}
+
+iex> ABI.decode_error(ABI.encode("Panic(uint256)", [0x11]), [])
+{:ok, %{error: "Panic", args: [17]}}  # 0x11 = overflow/underflow
+```
 
 ### Packed encoding (`abi.encodePacked`)
 
@@ -178,6 +188,30 @@ iex> File.read!("priv/dog.abi.json")
 ```
 
 Each returned selector carries its `function_type` (`:function`, `:constructor`, `:fallback`, `:receive`, `:event`, or `:error`), so you can filter the parsed list by shape when a single ABI mixes all of them.
+
+### Looking up and formatting ABI fragments
+
+`ABI.get_abi_item/3` finds a fragment by name in a parsed specification (the list from `parse_specification/1`). For overloaded names, pass `arg_types` — a list of internal type atoms aligned with each input's `type` field — to select the intended overload; pass `nil` when the name is unique or to surface `{:error, {:ambiguous, _}}`. Mirrors viem's `getAbiItem`.
+
+```elixir
+iex> abi = ABI.parse_specification([
+...>   %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}]},
+...>   %{"type" => "function", "name" => "pick", "inputs" => [%{"type" => "uint256"}, %{"type" => "address"}]}
+...> ])
+iex> {:error, {:ambiguous, _}} = ABI.get_abi_item(abi, "pick", nil)
+iex> {:ok, %ABI.FunctionSelector{}} = ABI.get_abi_item(abi, "pick", [{:uint, 256}, :address])
+iex> ABI.get_abi_item(abi, "missing", nil)
+{:error, :not_found}
+```
+
+`ABI.format_abi_item/1` is the inverse of parsing — it renders any `FunctionSelector` (function, error, event, constructor) back to its canonical `"name(type1,type2,...)"` signature string, with tuples expanded to parenthesized member lists and arrays rendered `[]` / `[N]`. It delegates to the same canonical sig-builder that `method_id/1` and `event_signature/1` hash, so the human-readable string can never drift from what gets hashed. Mirrors viem's `formatAbiItem`.
+
+```elixir
+iex> ABI.parse_specification([%{"type" => "function", "name" => "transfer", "inputs" => [%{"type" => "address"}, %{"type" => "uint256"}]}])
+...> |> hd()
+...> |> ABI.format_abi_item()
+"transfer(address,uint256)"
+```
 
 ### Decoding event logs
 
