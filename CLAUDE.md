@@ -1,9 +1,14 @@
 @~/.claude/includes/critical-rules.md
+@~/.claude/includes/harness-workflow.md
+@~/.claude/includes/onchain-workspace.md
 @~/.claude/includes/upstream-pr-workflow.md
 
 <!--
-  Selective-load (Opus 4.8): eager floor is `critical-rules` only; `upstream-pr-workflow`
-  stays eager because this fork actively files PRs upstream (see "Upstream Issue Monitoring").
+  Selective-load (Opus 4.8): eager floor is `critical-rules`; `harness-workflow` is eager
+  because internal roadmap work here is harness-driven (OTP dispatch→review→land loop).
+  `onchain-workspace` is the harness workspace add-on (7-repo roster + dependency shape),
+  eager family-wide. `upstream-pr-workflow` stays eager because this fork actively files PRs upstream (see
+  "Upstream Issue Monitoring") — that path is orthogonal to harness.
   Everything else is skill-on-demand — task-prioritization → elixir:roadmap-planning,
   task-writing → task-driver:task-writing, workflow-philosophy → dev-lifecycle:workflow-philosophy,
   worktree-workflow → elixir:git-worktrees, web-command/ex-unit-json/dialyzer-json/code-style/
@@ -16,6 +21,19 @@
 # ABI
 
 Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes — `ABI.encode/2`, `ABI.decode/2`, and the `TypeEncoder`/`TypeDecoder`/`FunctionSelector`/`Event` modules under `lib/abi/` are all stateless functions.
+
+## Toolchain & check commands (read before judging a build)
+
+Canonical gate: **`mix precommit.full`** — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`) then `dialyzer.json --quiet`. A clean `mix precommit.full` is the merge bar. (`mix precommit` = same minus dialyzer; `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
+
+**The `.json` mix tasks emit JSON BY DESIGN — that is expected output, never an error or a broken setup:**
+
+- **`mix test.json`** (from the `ex_unit_json` dep) — ExUnit results as a JSON document for machine parsing; identical run to `mix test`. Parse it for failures; the JSON envelope itself is never a failure signal. `--cover` can emit a large per-module coverage blob — pipe to a file (`--output /tmp/cov.json`) and `jq` the summary, don't dump it to the transcript.
+- **`mix dialyzer.json`** (from the `dialyzer_json` dep) — dialyzer warnings as JSON. Read the JSON array for *real* warnings; do NOT flag the JSON output as a problem. If the encoder cannot serialize a warning shape, plain `mix dialyzer` (MIX_ENV=dev) is the authoritative dialyzer check. Zero real warnings = pass.
+
+The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`, `mix sobelow --skip` (the `--skip` honors `.sobelow-skips`; inline `# sobelow_skip` comments are NOT honored by the commit hook — see § Sobelow in `~/.claude/CLAUDE.md`).
+
+(Claude-family agents with the user's global skills can invoke `elixir:ex-unit-json` and `elixir:dialyzer-json` for the full flag/jq reference. For every other agent — the cross-family harness reviewers — the notes above are self-contained.)
 
 ## Layout
 
