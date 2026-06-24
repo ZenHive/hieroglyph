@@ -10,6 +10,12 @@ defmodule ABI.Hex do
 
   @type t :: binary()
 
+  # Dialyzer narrows `Base.decode16/2` to its `{:ok, binary()}` success
+  # typing, so it treats the `:error` / `:invalid_hex` branches in these two
+  # functions as dead code. They are live at runtime (the doctests decode
+  # invalid hex) — keep the error handling, suppress the false-positive matches.
+  @dialyzer {:no_match, [decode_hex!: 1, decode_hex_number!: 1]}
+
   defmacro __using__(_opts) do
     quote do
       import ABI.Hex,
@@ -87,7 +93,7 @@ defmodule ABI.Hex do
     iex> ABI.Hex.from_hex("0xaabb")
     {:ok, <<0xaa, 0xbb>>}
   """
-  @spec from_hex(t()) :: String.t()
+  @spec from_hex(t()) :: {:ok, t()} | :error
   def from_hex(b), do: decode_hex(b)
 
   @doc """
