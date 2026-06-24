@@ -9,9 +9,9 @@
   `onchain-workspace` is the harness workspace add-on (7-repo roster + dependency shape),
   eager family-wide. `upstream-pr-workflow` stays eager because this fork actively files PRs upstream (see
   "Upstream Issue Monitoring") — that path is orthogonal to harness.
-  Everything else is skill-on-demand — task-prioritization → elixir:roadmap-planning,
-  task-writing → task-driver:task-writing, workflow-philosophy → dev-lifecycle:workflow-philosophy,
-  worktree-workflow → elixir:git-worktrees, web-command/ex-unit-json/dialyzer-json/code-style/
+  Everything else is skill-on-demand — task-prioritization → tasks:roadmap-planning,
+  task-writing → tasks:task-writing, workflow-philosophy → workflow:workflow-philosophy,
+  worktree-workflow → workflow:git-worktrees, web-command/ex-unit-json/dialyzer-json/code-style/
   development-commands/development-philosophy/elixir-setup/agent-economy → elixir:*.
   Delegation + across-instances intentionally omitted (work/library repo, no cloud-agent usage).
   Re-add an `@`-import only if Opus quality drops on that surface.
