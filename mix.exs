@@ -134,6 +134,7 @@ defmodule ABI.Mixfile do
       {:bandit, "~> 1.10", only: :dev},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: :test}
     ]
   end
