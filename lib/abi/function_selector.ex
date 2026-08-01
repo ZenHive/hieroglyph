@@ -370,7 +370,7 @@ defmodule ABI.FunctionSelector do
         do: get_state_mutability(item["stateMutability"])
 
     %ABI.FunctionSelector{
-      function: Map.get(item, "name", nil),
+      function: Map.get(item, "name"),
       function_type: get_function_type(function_type),
       state_mutability: state_mutability,
       types: input_types,

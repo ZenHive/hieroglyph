@@ -22,6 +22,36 @@ defmodule ABI.TypeDecoderTest do
         TypeDecoder.decode_raw(<<0::256>>, [%{type: :banana}])
       end
     end
+
+    test "raises when an array length prefix exceeds the remaining payload" do
+      # A count claiming 2^32-1 elements with no element words behind it. The
+      # bound has to fire before the element type list is materialized —
+      # otherwise this allocates 4 billion maps first.
+      data = <<0xFFFFFFFF::256>>
+
+      assert_raise RuntimeError, ~r/exceeds the 0 remaining 32-byte words/, fn ->
+        TypeDecoder.decode_raw(data, [%{type: {:array, {:uint, 256}}}])
+      end
+    end
+
+    test "reports the oversized array length as a strict violation in strict mode" do
+      data = <<0xFFFFFFFF::256>>
+      types = [%{type: {:array, {:uint, 256}}}]
+
+      assert_raise TypeDecoder.StrictViolation, ~r/length_out_of_bounds/, fn ->
+        TypeDecoder.decode_raw(data, types, strict: true)
+      end
+    end
+
+    test "arrays of zero-width elements are exempt from the element-count bound" do
+      # `bool[0][]` — each element occupies no payload at all, so element count
+      # admits no data-length bound. Must still round-trip rather than trip the
+      # guard (surfaced by the depth-5 composite property).
+      types = [%{type: {:array, {:array, :bool, 0}}}]
+      encoded = TypeEncoder.encode_raw([[[]]], types)
+
+      assert [[[]]] = TypeDecoder.decode_raw(encoded, types)
+    end
   end
 
   describe "function type decoding" do

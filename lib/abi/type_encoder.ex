@@ -667,9 +667,7 @@ defmodule ABI.TypeEncoder do
   # Returns the total number of static types, accounting for inlined tuples
   @spec count([arg_type()]) :: non_neg_integer()
   defp count(sub_types) do
-    sub_types
-    |> Enum.map(&do_count/1)
-    |> Enum.sum()
+    Enum.sum_by(sub_types, &do_count/1)
   end
 
   @spec do_count(arg_type()) :: non_neg_integer()
@@ -677,9 +675,7 @@ defmodule ABI.TypeEncoder do
     if FunctionSelector.dynamic?(t) do
       1
     else
-      sub_types
-      |> Enum.map(&do_count/1)
-      |> Enum.sum()
+      Enum.sum_by(sub_types, &do_count/1)
     end
   end
 

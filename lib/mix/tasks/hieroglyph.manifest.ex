@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Hieroglyph.Manifest do
     File.write!(output_file, json)
 
     Mix.shell().info(
-      "Generated #{output_file} (#{length(manifest.modules)} modules, #{Enum.sum(Enum.map(manifest.modules, &length(&1.functions)))} entries)"
+      "Generated #{output_file} (#{length(manifest.modules)} modules, #{Enum.sum_by(manifest.modules, &length(&1.functions))} entries)"
     )
   end
 end

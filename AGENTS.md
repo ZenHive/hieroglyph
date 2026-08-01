@@ -652,7 +652,7 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 
 ## Toolchain & check commands (read before judging a build)
 
-Canonical gate: **`mix precommit.full`** — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`) then `dialyzer.json --quiet`. A clean `mix precommit.full` is the merge bar. (`mix precommit` = same minus dialyzer; `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
+Canonical gate: **`mix ci`** (= `precommit.full`) — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`), then `ex_dna --max-clones 0`, `reach.check --arch --smells`, `deps.audit.gated`, `dialyzer.json --quiet`, `agents.check`. A clean `mix ci` is the merge bar. (`mix precommit` = the base steps only, no dialyzer/ex_dna/reach/audit. `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
 
 **The `.json` mix tasks emit JSON BY DESIGN — that is expected output, never an error or a broken setup:**
 
@@ -660,6 +660,14 @@ Canonical gate: **`mix precommit.full`** — `precommit` (format `--check-format
 - **`mix dialyzer.json`** (from the `dialyzer_json` dep) — dialyzer warnings as JSON. Read the JSON array for *real* warnings; do NOT flag the JSON output as a problem. If the encoder cannot serialize a warning shape, plain `mix dialyzer` (MIX_ENV=dev) is the authoritative dialyzer check. Zero real warnings = pass.
 
 The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`, `mix sobelow --skip` (the `--skip` honors `.sobelow-skips`; inline `# sobelow_skip` comments are NOT honored by the commit hook — see § Sobelow in `~/.claude/CLAUDE.md`).
+
+- **`mix reach.check --arch --smells` gates from `.reach.exs`** (`smells: [strict: true]`).
+  Smell findings must be fixed, never added to an ignore list. `deps/reach` here carries a
+  deliberate local 3-line patch (filed upstream as elixir-vibe/reach#36) without which
+  `--smells` crashes on this repo's yecc/leex-generated Erlang — never touch `deps/`.
+- **`deps.audit.gated`** runs `bin/advisory-freshness.sh` (in `onchain-stack`) before
+  `mix deps.audit` — `mix_audit` discards its own sync exit status, so a frozen advisory DB
+  would otherwise still report green. This repo carries no `.mix_audit_ignore` (audit is clean).
 
 (Claude-family agents with the user's global skills can invoke `elixir:ex-unit-json` and `elixir:dialyzer-json` for the full flag/jq reference. For every other agent — the cross-family harness reviewers — the notes above are self-contained.)
 

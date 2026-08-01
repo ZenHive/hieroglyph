@@ -344,6 +344,8 @@ defmodule ABI.TypeDecoder do
   defp decode_type({:array, _type, 0}, data, _opts), do: {[], data}
 
   defp decode_type({:array, type, element_count}, data, opts) do
+    validate_element_count!(data, type, element_count, opts)
+
     repeated_type = Enum.map(1..element_count, fn _ -> %{type: type} end)
 
     {tuple, rest} = decode_type({:tuple, repeated_type}, data, opts)
@@ -354,37 +356,31 @@ defmodule ABI.TypeDecoder do
   defp decode_type({:tuple, types}, starting_data, opts) do
     decode_structs = Keyword.get(opts, :decode_structs, false)
 
-    # First pass, decode static types
+    # First pass, decode static types. `Enum.map_reduce/3` threads `data`
+    # through in order and returns `elements` already in `types` order, so no
+    # explicit reverse is needed to undo an accumulator-prepend inversion.
     {elements, rest} =
-      Enum.reduce(types, {[], starting_data}, fn %{type: type}, {elements, data} ->
+      Enum.map_reduce(types, starting_data, fn %{type: type}, data ->
         if FunctionSelector.dynamic?(type) do
           {tail_position, rest} = decode_type({:uint, 256}, data, opts)
 
-          {[{:dynamic, type, tail_position} | elements], rest}
+          {{:dynamic, type, tail_position}, rest}
         else
-          {el, rest} = decode_type(type, data, opts)
-
-          {[el | elements], rest}
+          decode_type(type, data, opts)
         end
       end)
 
-    # Second pass, decode dynamic types
+    # Second pass, decode dynamic types. Same order-preserving property as
+    # above, so `elements` is already in `types` order for `tuple_value`.
     {elements, rest} =
-      elements
-      |> Enum.reverse()
-      |> Enum.reduce({[], rest}, fn el, {elements, data} ->
+      Enum.map_reduce(elements, rest, fn el, data ->
         case el do
-          {:dynamic, type, _tail_position} ->
-            {el, rest} = decode_type(type, data, opts)
-
-            {[el | elements], rest}
-
-          _ ->
-            {[el | elements], data}
+          {:dynamic, type, _tail_position} -> decode_type(type, data, opts)
+          _ -> {el, data}
         end
       end)
 
-    {tuple_value(types, Enum.reverse(elements), decode_structs), rest}
+    {tuple_value(types, elements, decode_structs), rest}
   end
 
   defp decode_type(els, _, _) do
@@ -484,6 +480,58 @@ defmodule ABI.TypeDecoder do
 
     {value, rest}
   end
+
+  # An array of `n` elements needs at least `n * min_element_words(element)`
+  # words of payload behind it, so a larger count can never be satisfied.
+  # Checked BEFORE the element type list is materialized: the count comes from
+  # a chain-supplied length prefix, and building a list that long is an
+  # allocation DoS the later decode failure would never get the chance to
+  # prevent. Zero-width element types (an empty tuple, a fixed-size array of
+  # length zero, or a nest of those) admit no such bound and are left
+  # unguarded — Solidity cannot emit them.
+  @spec validate_element_count!(binary(), FunctionSelector.type(), non_neg_integer(), keyword()) ::
+          :ok
+  defp validate_element_count!(data, type, element_count, opts) do
+    min_words = min_element_words(type)
+    available_words = div(byte_size(data), @word_size_bytes)
+
+    cond do
+      min_words == 0 or element_count * min_words <= available_words ->
+        :ok
+
+      strict?(opts) ->
+        strict_violation!(
+          {:length_out_of_bounds,
+           %{
+             type: {:array, type},
+             length: element_count,
+             available: byte_size(data)
+           }}
+        )
+
+      true ->
+        raise "Array element count #{element_count} exceeds the #{available_words} remaining 32-byte words"
+    end
+  end
+
+  # Smallest number of 32-byte words one element of this type can occupy: a
+  # single tail-offset word when dynamic, the summed static width otherwise.
+  @spec min_element_words(FunctionSelector.type()) :: non_neg_integer()
+  defp min_element_words(type) do
+    if FunctionSelector.dynamic?(type) do
+      1
+    else
+      static_element_words(type)
+    end
+  end
+
+  @spec static_element_words(FunctionSelector.type()) :: non_neg_integer()
+  defp static_element_words({:tuple, types}) do
+    Enum.sum_by(types, fn %{type: member} -> min_element_words(member) end)
+  end
+
+  defp static_element_words({:array, inner, count}), do: count * min_element_words(inner)
+  defp static_element_words(_type), do: 1
 
   @spec strict?(keyword()) :: boolean()
   defp strict?(opts), do: Keyword.get(opts, :strict, false)

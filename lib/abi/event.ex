@@ -244,6 +244,10 @@ defmodule ABI.Event do
   When the non-indexed payload bytes are truncated or wrongly typed, the underlying
   decoder previously raised; the function now wraps that path and returns
   `{:error, {:malformed_data, msg}}` with a human-readable description.
+
+  Inputs whose type map carries no `:name` at all — possible with hand-written
+  or partial ABI JSON, since Solidity always emits the key — are keyed by their
+  positional index as a string (`"0"`, `"1"`, …).
   """
   @spec decode_event(binary(), [binary()], FunctionSelector.t(), keyword()) ::
           {:ok, String.t() | nil, map()} | {:error, decode_error()}
@@ -262,9 +266,21 @@ defmodule ABI.Event do
   defp do_decode_event(data, topics, function_selector, opts) do
     check_event_signature = Keyword.get(opts, :check_event_signature, true)
 
+    # Solidity's own ABI JSON always emits a `name` for every event input
+    # (possibly ""), but hand-written or partial ABI JSON can omit the key
+    # entirely — `parse_specification_type/1` then yields a type map with no
+    # `:name` at all. Key those by their positional index so the decoded map
+    # stays total; without this the name-keying below raises (KeyError on the
+    # topic path, FunctionClauseError on the data path), breaking this
+    # function's documented "never raises" contract.
+    named_types =
+      Enum.with_index(function_selector.types, fn type, index ->
+        Map.put_new(type, :name, Integer.to_string(index))
+      end)
+
     # First, split the types into indexed and not indexed
     {indexed_types, non_indexed_types} =
-      Enum.split_with(function_selector.types, fn t -> Map.get(t, :indexed) end)
+      Enum.split_with(named_types, fn t -> Map.get(t, :indexed) end)
 
     indexed_types_full =
       if check_event_signature do
@@ -306,7 +322,16 @@ defmodule ABI.Event do
   @spec decode_non_indexed(binary(), arg_types(), keyword()) ::
           {:ok, decoded_map()} | {:error, {:malformed_data, String.t()}}
   defp decode_non_indexed(data, non_indexed_types, opts) do
-    tuple_type = [%{type: {:tuple, non_indexed_types}}]
+    # The wrapping tuple is synthetic — it exists only to drive head/tail
+    # decoding of the data blob, and THIS function owns the top-level keys
+    # (parameter name -> value, merged with the indexed topics below). Strip
+    # `:name` from the wrapper's members so `decode_structs: true` cannot turn
+    # that synthetic level into an atom-keyed map (which would then hit
+    # `Tuple.to_list/1` and surface as the caller's malformed data). Members
+    # keep their own nested types intact, so a struct-typed parameter still
+    # decodes as a map under `decode_structs: true`.
+    wrapper_types = Enum.map(non_indexed_types, &Map.delete(&1, :name))
+    tuple_type = [%{type: {:tuple, wrapper_types}}]
     [non_indexed_data] = TypeDecoder.decode_raw(data, tuple_type, opts)
 
     map =
@@ -317,8 +342,22 @@ defmodule ABI.Event do
 
     {:ok, map}
   rescue
-    e in StrictViolation -> reraise e, __STACKTRACE__
-    e -> {:error, {:malformed_data, Exception.message(e)}}
+    e in StrictViolation ->
+      reraise e, __STACKTRACE__
+
+    # These are the exception types TypeDecoder.decode_raw/3 can genuinely
+    # raise while walking arbitrary chain-supplied non-indexed payload bytes:
+    # MatchError (truncated/malformed binary — the primary case, see the
+    # "too short to decode" test), CaseClauseError (non-canonical bool byte,
+    # non-strict mode), and RuntimeError (unsupported type marker, an element
+    # count that cannot fit the remaining bytes, or trailing bytes after all
+    # types consumed, non-strict mode). Any other exception indicates a real
+    # bug rather than malformed event data, so it should propagate instead of
+    # being reported as the caller's fault — notably the ArgumentError that
+    # `decode_structs: true` raises for a non-interned field-name atom, which
+    # carries a migration hint and raises identically out of `ABI.decode/3`.
+    e in [MatchError, CaseClauseError, RuntimeError] ->
+      {:error, {:malformed_data, Exception.message(e)}}
   end
 
   @spec maybe_verify(decoded_map(), FunctionSelector.t(), boolean()) ::

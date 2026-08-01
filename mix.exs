@@ -5,8 +5,11 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.5.0",
-      elixir: "~> 1.14",
+      version: "1.6.0",
+      # 1.18 floor: `lib/` uses `Enum.sum_by/2` (added in Elixir 1.18) on the
+      # tuple/array encode path, so a lower floor would compile with only a
+      # warning and then die at runtime in a consumer's first encode call.
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       description:
         "Solidity ABI encoder/decoder for Elixir. Maintained fork of exthereum/abi with bugfixes and Elixir 1.19+ support.",
@@ -96,8 +99,33 @@ defmodule ABI.Mixfile do
         &cover_gate/1,
         "sobelow --skip"
       ],
-      # CI mirror — adds dialyzer. Matches `elixir-ci-harness` `harness.yml`.
-      "precommit.full": ["precommit", "dialyzer.json --quiet"]
+      # CI mirror — adds ex_dna clone detection, reach PDG arch/smell gates,
+      # the security-advisory audit, dialyzer, and AGENTS.md freshness. Matches
+      # the onchain-family canonical gate (see onchain-stack/CLAUDE.md). Order
+      # is append-after-`precommit`, not the family's canonical step order —
+      # this repo's `cover_gate/1` mechanism (below) predates and supersedes
+      # the family's `cmd env MIX_ENV=test mix ...` step form.
+      "precommit.full": [
+        "precommit",
+        "ex_dna --max-clones 0",
+        "reach.check --arch --smells",
+        "deps.audit.gated",
+        "dialyzer.json --quiet",
+        "agents.check"
+      ],
+      # mix_audit discards its sync exit status (mirego/mix_audit#61), so a
+      # frozen advisory DB still reports green. Prove freshness first, then
+      # audit. This repo's `deps.audit` reports clean — no ignore file needed.
+      "deps.audit.gated": [
+        &advisory_freshness/1,
+        "deps.audit"
+      ],
+      # Fails when AGENTS.md has drifted from CLAUDE.md. Compares rendered
+      # output, not mtimes, so drift in a transitive @-import is caught too.
+      "agents.check": [
+        &agents_check/1
+      ],
+      ci: ["precommit.full"]
     ]
   end
 
@@ -121,7 +149,12 @@ defmodule ABI.Mixfile do
     [
       {:jason, "~> 1.4"},
       {:ex_sha3, "~> 0.1.4"},
-      {:descripex, "~> 0.6"},
+      # Three-segment on purpose (caps at < 0.13.0): descripex 0.12.0 changed
+      # `short_name` in describe/1 output from atom to string at a *minor*
+      # bump, which the previous `~> 0.11` would have absorbed silently. A 0.x
+      # package that breaks on minor earns the tighter form; raise the cap
+      # deliberately after reading its CHANGELOG.
+      {:descripex, "~> 0.12.0"},
       {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -133,9 +166,74 @@ defmodule ABI.Mixfile do
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.10", only: :dev},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
+      # Three-segment on purpose (caps at < 0.13.0): `reach` requires
+      # `ex_ast ~> 0.12.0`, so a two-segment `~> 0.12` here advertises a 0.13.x
+      # that resolution can never pick — `mix deps.update ex_ast` would fail on
+      # an unsatisfiable constraint with no in-repo explanation.
+      {:ex_ast, "~> 0.12.0", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: :test}
     ]
+  end
+
+  # Both gates below shell out to scripts that live OUTSIDE this repo, on the
+  # developer host: the AGENTS.md renderer needs the claude-marketplace
+  # checkout plus ~/.claude/includes, and the advisory-freshness prover needs
+  # the local mix_audit mirror. Neither exists on a CI runner, and `mix cmd`
+  # with an absent path exits non-zero — which aborted the whole `mix ci`
+  # alias, and since these steps precede test.json/dialyzer it took the test,
+  # coverage and dialyzer signal down with it. Skip loudly when the script is
+  # absent so CI keeps running the checks it CAN run; the developer host and
+  # the harness reviewer still get the full gate.
+  @spec agents_check([String.t()]) :: :ok
+  defp agents_check(_args) do
+    host_script(
+      "~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh",
+      ["--check"],
+      "AGENTS.md freshness check"
+    )
+  end
+
+  @spec advisory_freshness([String.t()]) :: :ok
+  defp advisory_freshness(_args) do
+    host_script(
+      "~/_DATA/code/onchain-stack/bin/advisory-freshness.sh",
+      [],
+      "advisory-mirror freshness check"
+    )
+  end
+
+  @spec host_script(String.t(), [String.t()], String.t()) :: :ok
+  defp host_script(path, args, label) do
+    expanded = Path.expand(path)
+
+    cond do
+      not File.regular?(expanded) ->
+        Mix.shell().info("[skip] #{label}: #{expanded} not found (developer-host script, absent in CI).")
+
+      # Present but not runnable is a broken host setup, not a CI runner — say
+      # so instead of letting System.cmd/3 blow up with a raw :eacces.
+      not executable?(expanded) ->
+        Mix.raise("#{label}: #{expanded} exists but is not executable (chmod +x it).")
+
+      true ->
+        {_out, status} =
+          System.cmd(expanded, args, into: IO.stream(:stdio, :line), stderr_to_stdout: true)
+
+        if status != 0 do
+          Mix.raise("#{label} failed (#{expanded} exited #{status})")
+        end
+    end
+
+    :ok
+  end
+
+  @spec executable?(String.t()) :: boolean()
+  defp executable?(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{mode: mode}} -> Bitwise.band(mode, 0o111) != 0
+      _error -> false
+    end
   end
 end

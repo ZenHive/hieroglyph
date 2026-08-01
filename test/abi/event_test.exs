@@ -268,5 +268,100 @@ defmodule ABI.EventTest do
       assert {:error, {:strict_violation, _detail}} =
                Event.decode_event(bad_uint8, topics, selector, strict: true)
     end
+
+    test "returns :malformed_data when an array length prefix exceeds the payload" do
+      selector = %FunctionSelector{
+        function: "Bulk",
+        types: [%{type: {:array, {:uint, 256}}, name: "ids"}]
+      }
+
+      # Head offset of 0x20, then a length prefix claiming 2^32-1 elements with
+      # no element words behind it. Without the element-count bound this
+      # materializes 4 billion type maps before the decode can fail.
+      data = <<32::256, 0xFFFFFFFF::256>>
+      topics = [Event.event_signature(selector)]
+
+      assert {:error, {:malformed_data, msg}} =
+               Event.decode_event(data, topics, selector)
+
+      assert msg =~ "exceeds"
+    end
+  end
+
+  describe "totality of decode_event/4" do
+    test "keys inputs with no name by positional index instead of raising" do
+      # Solidity's own ABI JSON always emits `name` (possibly ""), but
+      # hand-written or partial JSON can omit the key entirely.
+      [selector] =
+        ABI.parse_specification([
+          %{
+            "type" => "event",
+            "name" => "Ping",
+            "inputs" => [
+              %{"type" => "address", "indexed" => true},
+              %{"type" => "uint256", "indexed" => false}
+            ]
+          }
+        ])
+
+      who = ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8]
+
+      topics = [
+        Event.event_signature(selector),
+        ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8]
+      ]
+
+      assert {:ok, "Ping", %{"0" => ^who, "1" => 20_000_000_000}} =
+               Event.decode_event(<<20_000_000_000::256>>, topics, selector)
+    end
+
+    test "decode_structs: true keeps the top-level parameter-name keys" do
+      selector = %FunctionSelector{
+        function: "Small",
+        types: [%{type: {:uint, 256}, name: "amount"}]
+      }
+
+      topics = [Event.event_signature(selector)]
+      opts = [decode_structs: true]
+
+      assert {:ok, "Small", %{"amount" => 17}} =
+               Event.decode_event(<<17::256>>, topics, selector, opts)
+    end
+
+    test "decode_structs: true still renders a struct-typed parameter as a map" do
+      members = [
+        %{type: {:uint, 256}, name: "a"},
+        %{type: :bool, name: "b"}
+      ]
+
+      selector = %FunctionSelector{
+        function: "Wrapped",
+        types: [%{type: {:tuple, members}, name: "point"}]
+      }
+
+      topics = [Event.event_signature(selector)]
+      opts = [decode_structs: true]
+
+      assert {:ok, "Wrapped", %{"point" => %{a: 17, b: true}}} =
+               Event.decode_event(<<17::256, 1::256>>, topics, selector, opts)
+    end
+
+    test "propagates the non-interned atom ArgumentError instead of reporting malformed data" do
+      selector = %FunctionSelector{
+        function: "Wrapped",
+        types: [
+          %{
+            type: {:tuple, [%{type: {:uint, 256}, name: "neverInternedZ47Q"}]},
+            name: "point"
+          }
+        ]
+      }
+
+      topics = [Event.event_signature(selector)]
+
+      assert_raise ArgumentError, ~r/never_interned_z47_q/, fn ->
+        Event.decode_event(<<17::256>>, topics, selector, decode_structs: true)
+      end
+    end
   end
 end
