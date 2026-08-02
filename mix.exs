@@ -97,7 +97,7 @@ defmodule ABI.Mixfile do
         # runs args via `System.cmd` with no shell (so a `MIX_ENV=test` prefix
         # is treated as the binary name). Spawn a fresh `mix` in :test instead.
         &cover_gate/1,
-        "sobelow --skip"
+        "sobelow --skip --exit low"
       ],
       # CI mirror — adds ex_dna clone detection, reach PDG arch/smell gates,
       # the security-advisory audit, dialyzer, and AGENTS.md freshness. Matches
