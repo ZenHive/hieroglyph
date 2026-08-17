@@ -5,7 +5,7 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.6.0",
+      version: "1.6.1",
       # 1.18 floor: `lib/` uses `Enum.sum_by/2` (added in Elixir 1.18) on the
       # tuple/array encode path, so a lower floor would compile with only a
       # warning and then die at runtime in a consumer's first encode call.
@@ -166,11 +166,8 @@ defmodule ABI.Mixfile do
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.10", only: :dev},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
-      # Three-segment on purpose (caps at < 0.13.0): `reach` requires
-      # `ex_ast ~> 0.12.0`, so a two-segment `~> 0.12` here advertises a 0.13.x
-      # that resolution can never pick — `mix deps.update ex_ast` would fail on
-      # an unsatisfiable constraint with no in-repo explanation.
-      {:ex_ast, "~> 0.12.0", only: [:dev, :test], runtime: false},
+      # Reach 2.8.2 caps ex_ast at ~> 0.12.0; Reach uses APIs retained by ex_ast 0.13.
+      {:ex_ast, "~> 0.13", override: true, only: [:dev, :test], runtime: false},
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: :test}

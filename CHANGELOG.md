@@ -1,3 +1,12 @@
+# 1.6.1 - 2026-08-17
+
+* **Dependency refresh.** Resolved the published `descripex 0.12.1` patch
+  within the unchanged `~> 0.12.0` runtime requirement. Updated dev/test
+  tooling: `ex_ast` 0.12.10 → 0.13.1, `sobelow` 0.14.1 → 0.15.0, and
+  `tidewave` 0.8.1 → 0.8.4. The direct dev/test `ex_ast` dependency
+  explicitly overrides Reach 2.8.2's older `~> 0.12.0` declaration.
+  No public API or runtime dependency requirement changed.
+
 # 1.6.0 - 2026-08-01
 
 * **Raised — `elixir: "~> 1.14"` → `"~> 1.18"`.** `lib/abi/type_encoder.ex`'s `count/1` uses `Enum.sum_by/2`, which landed in Elixir 1.18, and that call sits on the tuple/array encode path shipped in the hex package. Against the old `~> 1.14` floor a consumer on 1.16 would compile with nothing worse than an "undefined or private" warning and then die with `UndefinedFunctionError` on their first `ABI.encode/2` of a tuple type; CI pins 1.18, so nothing caught it. The floor now states what the code actually requires.
