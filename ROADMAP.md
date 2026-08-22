@@ -9,11 +9,11 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (10 of 12 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (11 of 13 done · 0 in progress)
 
-**Last shipped:** Task 37 — ABI.get_abi_item/3 (lookup helper over parse_specification output) on 2026-06-05
+**Last shipped:** no recent shipments
 
-**Up next:** Task 35 — ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25] 🎯
+**Up next:** Task 44 — Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋
 <!-- FOCUS:END -->
 
 ---
@@ -52,19 +52,20 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 | Task 32 | ✅ | 🎁 **peer_parity** · ABI.decode_call/3 + ABI.method_id/1 [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
 | Task 33 | ✅ | 🎁 **peer_parity** · Implement function type encode/decode [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
 | Task 34 | ✅ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_call/3 (selector-prefixed calldata) [D:2/B:5/U:6 → Eff:2.75?] 🎯 |
-| Task 35 | ⬜ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
+| Task 35 | ✅ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob) [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 36 | ✅ | 🎁 **encode_symmetry** · 🚀 **encode_symmetry** · ABI.encode_event_topics/2 (event log topic filter builder) [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 37 | ✅ | 🎁 **peer_parity** · ABI.get_abi_item/3 (lookup helper over parse_specification output) [D:2/B:3/U:3 → Eff:1.5?] 🚀 |
 | Task 38 | ✅ | 🎁 **peer_parity** · Strict-decode mode (strict: true opt) [D:5/B:6/U:4 → Eff:1.0?] 📋 |
-| Task 39 | ⬜ | 🎁 **peer_parity** · Implement fixed<M>x<N> / ufixed<M>x<N> [D:8/B:3/U:2 → Eff:0.31?] ⚠️ |
-| Task 40 | ✅ | 🎁 **peer_parity** · Built-in Error(string) / Panic(uint256) auto-decoding in decode_error/2 [D:2/B:7/U:7 → Eff:3.5] 🎯 |
-| Task 41 | ✅ | 🎁 **peer_parity** · ABI.encode_constructor/2 (deploy-time argument encoding) [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 42 | ✅ | 🎁 **peer_parity** · ABI.format_abi_item/1 (FunctionSelector -> canonical signature string) [D:3/B:3/U:4 → Eff:1.17] 📋 |
-| Task 43 | ✅ | 🎁 **agent_economy** · SKILL.md for AI-agent consumers of the ABI library [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 39 | 🔶 | 🎁 **peer_parity** · Implement fixed<M>x<N> / ufixed<M>x<N> [D:8/B:3/U:2 → Eff:0.31?] ⚠️ ⛔ External: Solidity itself does not support fixed-point (declarable, not assignable), so there is no real-world corpus to encode against. Parse-time rejection + README rationale already ship (task 2, 1.0.0). Unblock condition: Solidity lands assignable fixed<M>x<N>, or a downstream consumer surfaces a concrete need. |
+| Task 40 | ✅ | 🎁 **peer_parity** · Built-in Error(string) / Panic(uint256) auto-decoding in decode_error/2 [D:2/B:7/U:7 → Eff:3.5?] 🎯 |
+| Task 41 | ✅ | 🎁 **peer_parity** · ABI.encode_constructor/2 (deploy-time argument encoding) [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
+| Task 42 | ✅ | 🎁 **peer_parity** · ABI.format_abi_item/1 (FunctionSelector -> canonical signature string) [D:3/B:3/U:4 → Eff:1.17?] 📋 |
+| Task 43 | ✅ | 🎁 **agent_economy** · SKILL.md for AI-agent consumers of the ABI library [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
+| Task 44 | ⬜ | 🎁 **peer_parity** · 🔒 Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋 |
 <!-- TASKS:END -->
 
 ---
 
 ## Upstream / Fork Split
 
-This fork files issues/PRs upstream (`exthereum/abi`) then ships locally — see CLAUDE.md § "Upstream Issue Monitoring" for the live issue/PR status (#53, #54, #55, PR #52) and the queued combined-bug filings.
+Upstream (`exthereum/abi`) is dormant and no longer tracked — issues #53/#54/#55 and PR #52 sit unanswered, and no further filings are planned. Fixes ship here. See CLAUDE.md § "Upstream Divergence" for the map of where this fork diverges and why (reference, not a work queue).

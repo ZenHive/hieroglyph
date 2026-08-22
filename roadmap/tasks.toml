@@ -588,13 +588,9 @@ id = 35
 phase = 5
 bundle = "encode_symmetry"
 milestone = "encode_symmetry"
-status = "pending"
-assignee = "grok"
-domains = ["abi", "elixir"]
+status = "done"
 title = "ABI.encode_error/3 (Solidity 0.8.4+ custom-error revert blob)"
 scores = { d = 2, b = 5, u = 4 }
-scored_at = "2026-05-01"
-body = "Symmetric counterpart to decode_error/2. Given an error signature + args, return <<selector::4-bytes, abi_encoded_args::binary>>. Test-harness, RPC-mock, and contract-fuzzer use cases. Mirrors viem.encodeErrorResult. api() declaration with composes_with: link to decode_error/2. Same three-clause shape as encode_call/3."
 acceptance_criteria = [
   "encode_error/3 returns selector-prefixed revert data for a signature + args",
   "Accepts both a signature string and a %FunctionSelector{}",
@@ -602,6 +598,18 @@ acceptance_criteria = [
   "api() declaration carries a composes_with: link to decode_error/2",
   "CHANGELOG entry under [Unreleased]",
 ]
+domains = ["abi", "elixir"]
+assignee = "grok"
+model = "grok-4.6"
+body = "Symmetric counterpart to decode_error/2. Given an error signature + args, return <<selector::4-bytes, abi_encoded_args::binary>>. Test-harness, RPC-mock, and contract-fuzzer use cases. Mirrors viem.encodeErrorResult. api() declaration with composes_with: link to decode_error/2. Same three-clause shape as encode_call/3."
+implemented = "Shipped in 1.5.0 (2026-06-09) as specified: three-clause encode_error/3 mirroring encode_call/3, api() with composes_with: [:decode_error], doctests + test/abi/encode_error_test.exs, CHANGELOG entry. Reviewer additionally regenerated api_manifest.json. Roadmap status was never advanced after the harness land — backfilled 2026-08-22."
+delivered_by = "grok"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1780596389099-9172b09f"
+scored_at = "2026-05-01"
+done_at = "2026-06-05"
+shipped_in = "2a0c70ad75a421ac7b587c565b5eeb74687f2ddd"
 
 [[task]]
 id = 36
@@ -663,6 +671,7 @@ status = "done"
 implemented = "Landed by codex via merge-train; reviewer-approved (run run-1780596896829-245ef7b0, e42e5d050472c312f77ecae8b954f0b5c2d6f5a5)."
 delivered_by = "codex"
 verified = true
+done_at = "2026-06-05"
 shipped_in = "e42e5d050472c312f77ecae8b954f0b5c2d6f5a5"
 assignee = "codex"
 domains = ["abi", "elixir"]
@@ -684,19 +693,20 @@ acceptance_criteria = [
 id = 39
 phase = 5
 bundle = "peer_parity"
-status = "pending"
-assignee = "human"
+status = "blocked"
 title = "Implement fixed<M>x<N> / ufixed<M>x<N>"
 scores = { d = 8, b = 3, u = 2 }
-scored_at = "2026-05-01"
-body = "Decimal fixed-point types. Rarely seen in real contracts; Solidity itself does not fully support fixed-point types, so there is nothing real-world to encode against. High cost (encoder + decoder + range validation), low payoff. DEFERRED unless a downstream consumer surfaces a concrete need — currently rejected at parse time (task 2) for clarity."
-out_of_scope = ["Implementation while Solidity's own fixed-point support remains incomplete — the current parse-time rejection stands."]
 acceptance_criteria = [
   "If implemented: encoder + decoder + range validation for fixed<M>x<N> and ufixed<M>x<N>",
   "If implemented: README Support checkboxes flipped to [X]",
   "If deferred-permanently: README documents the explicit parse-time rejection",
   "CHANGELOG entry under [Unreleased]",
 ]
+out_of_scope = ["Implementation while Solidity's own fixed-point support remains incomplete — the current parse-time rejection stands."]
+assignee = "human"
+blocked_reason = "External: Solidity itself does not support fixed-point (declarable, not assignable), so there is no real-world corpus to encode against. Parse-time rejection + README rationale already ship (task 2, 1.0.0). Unblock condition: Solidity lands assignable fixed<M>x<N>, or a downstream consumer surfaces a concrete need."
+body = "Decimal fixed-point types. Rarely seen in real contracts; Solidity itself does not fully support fixed-point types, so there is nothing real-world to encode against. High cost (encoder + decoder + range validation), low payoff. DEFERRED unless a downstream consumer surfaces a concrete need — currently rejected at parse time (task 2) for clarity."
+scored_at = "2026-05-01"
 
 [[task]]
 id = 40
@@ -770,3 +780,72 @@ started_at = "2026-06-04"
 scored_at = "2026-06-04"
 done_at = "2026-06-04"
 shipped_in = "9d530656c797e5a6889684799ce86ffeeea99613"
+
+[[task]]
+id = 44
+phase = 5
+bundle = "peer_parity"
+status = "pending"
+title = "Independent-oracle + planted-mutant verification for the ABI wire format"
+scores = { d = 5, b = 8, u = 6 }
+markers = ["security"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+domains = ["abi", "elixir"]
+files_to_modify = [
+  "test/abi/",
+  "test/support/",
+  "docs/abi-verification-ledger.md",
+  "lib/mix/tasks/",
+  "mix.exs",
+]
+touches = [
+  "test/",
+  "docs/",
+  "mix.exs",
+  "lib/mix/tasks/",
+  "lib/abi.ex",
+  "lib/abi/math.ex",
+  "lib/abi/event.ex",
+  "lib/abi/type_encoder.ex",
+  "lib/abi/type_decoder.ex",
+]
+acceptance_criteria = [
+  "Independent vectors: a filtered subset of the MIT-licensed ethers.js `@ethersproject/testcases` corpus (contract-interface, contract-interface-abi2, contract-signatures, contract-events) is vendored under test/support/fixtures/ with recorded provenance, and asserts ABI.encode/2 output byte-for-byte against the corpus' own recorded encoding — the assertion path contains no decode(encode(x)) step",
+  "Spec-anchored assertions close the three concerns the suite currently leaves to round-trip alone — the dynamic head/tail offset VALUE, the length word for bytes/string/dynamic arrays, and standard-ABI (non-packed) padding direction — each citing the Solidity ABI spec section it encodes",
+  "A planted-mutant corpus under test/support/mutants/ carries at least the eight enumerated single-site mutations from the body, applied and reverted by a mix task; the run is reproducible and leaves the working tree byte-clean afterwards",
+  "Every planted mutant is killed by an assertion ADDED BY THIS TASK, proven by running the new vectors alone against each mutant — a mutant that only the pre-existing doctests catch counts as a SURVIVOR, not a kill",
+  "Every survivor is recorded with a classification and the evidence behind it; none is silently dropped",
+  "docs/abi-verification-ledger.md records the spec sections with their fetch date, the local solc version, the vendored corpus name/version/license/filter criteria, the mutant table (site -> mutation -> killing assertion), and the survivor review",
+  "CHANGELOG entry under [Unreleased]",
+]
+out_of_scope = [
+  "Any change to public encode/decode behaviour or the ABI surface — api_manifest.json must come out of this task unchanged",
+  "New runtime dependencies; anything added is `only: [:dev, :test], runtime: false`",
+  "An automated muex-driven mutation sweep. muex 0.8.2 (MIT, Elixir ~> 1.14) was released 2026-08-19 and is unproven on this codebase; the deterministic planted corpus is the gate here. Revisit once the corpus and ledger exist and there is something to compare a sweep against.",
+  "Vendoring the full ~9,800-vector ethers corpus — a filtered subset with a stated filter criterion only",
+  "fixed<M>x<N> / ufixed<M>x<N> (task 39, blocked on Solidity itself)",
+]
+body = """
+Give the ABI suite an oracle that is independent of the implementation, and prove it by planting defects that must fail the run.
+
+WHY (corrected premise — do not repeat the older framing). The weakness is NOT that encoder and decoder share padding helpers: `ABI.Math.pad/4` (math.ex:120) and `unpad/3` (math.ex:185) are two independently written implementations, and `TypeDecoder.decode_int/2` (type_decoder.ex:475) uses the BEAM's native signed bit-syntax rather than re-deriving two's complement — so a padding-direction flip or a sign-extension bug DOES break the round trip. The real blind spot is narrower and stronger: the decoder never reads the offset the encoder writes. `TypeDecoder` parses the head word into `{:dynamic, type, tail_position}` (type_decoder.ex:365) and then discards it — `{:dynamic, type, _tail_position} -> decode_type(...)` (type_decoder.ex:378) — consuming the tail sequentially in declaration order instead. Offset arithmetic is therefore round-trip-invisible by non-use. The second class is self-verification: `ABI.method_id/1` is called once to build the selector (abi.ex:253) and again to check it (abi.ex:487), and `Event.event_signature/1` likewise (event.ex:148 vs event.ex:487) — the same deterministic bug computes both sides.
+
+WHAT ALREADY EXISTS (extend it, do not rebuild it). ~30 independent hex/selector assertions are already in place: 9 real DeFi calldata fixtures (defi_calldata_test.exs, sourced from defi-skills v0.3.0), 11 mainnet method_ids plus 4 selector round-trips (function_selector_real_world_test.exs), the Solidity packed-mode spec example and a Merkle leaf (encode_packed_test.exs), 4 ERC-20 selectors (abi_test.exs). Doctests additionally pin `Math.kec/1` digests, `method_id("transfer(address,uint256)") == "a9059cbb"`, the ERC-20 Transfer topic0, and nested-tuple hex in TypeEncoder's moduledoc. roundtrip_property_test.exs (28 properties, composite depth 5) is pure self-consistency and exercises only `encode_raw`/`decode_raw` — it never touches the selector or event paths at all.
+
+AUTHORITIES. Solidity ABI spec, https://docs.soliditylang.org/en/latest/abi-spec.html — #formal-specification-of-the-encoding (head/tail; head(X(i)) is the offset of tail(X(i)) relative to the start of enc(X); bytes/string are `enc(k) pad_right(X)`; uint left-padded with zero bytes, int left-padded with 0xff when negative), #function-selector, #events, #encoding-of-indexed-event-parameters. Vector corpus: ethers.js `@ethersproject/testcases` 5.8.0 (MIT) — the only surveyed corpus that is machine-readable, large, and derived from real solc-compiled output; eth-abi, viem and alloy keep their vectors inline in test code and are not copyable. `ethereum/tests` ABITests/basic_abi_tests.json holds only 3 vectors. solc 0.8.10 is available locally (`--combined-json abi,bin-runtime,hashes`) if a fixture needs generating rather than borrowing.
+
+PLANTED MUTANTS (verified single-site edits; several are already caught by existing doctests — that does not count, see AC4):
+1. type_encoder.ex:469 — write `encode_uint(0, 256)` instead of `encode_uint(tail_position, 256)`
+2. type_encoder.ex:472 — drop the `+ byte_size(el)`, so tail_position never advances
+3. type_encoder.ex:429 — `tail_start = count(types) * 32 + 32`
+4. abi.ex:287 — shift the 4-byte selector slice by one byte
+5. math.ex:70 — reverse the keccak digest in `kec/1`
+6. event.ex:528 — `FunctionSelector.encode(selector, true)` in `event_signature/1`
+7. event.ex:397 — delete the `reference_type?({:tuple, _})` clause
+8. math.ex:41 — flip the negative-dividend branch of `mod/2`
+
+MECHANICS. Mutants live as patches and are applied/reverted by the mix task; lib/abi/* is touched only transiently and must be restored byte-exact. Run the corpus twice and keep the signals apart: against the new vectors alone (the number that matters) and against the full suite (the "caught by something else" column). Do not let `mix compile --warnings-as-errors` or credo count as a kill — static analysis is a different oracle. Reviewer must be cross-family relative to the implementer; cursor and grok are one family, so a codex implementer pairs with either.
+"""
+created_at = "2026-08-17"
+scored_at = "2026-08-22"
