@@ -40,14 +40,14 @@ defmodule Mix.Tasks.Hieroglyph.PreflightTest do
     end
 
     test "does not apply the publish-only checks" do
-      loose = %{dirty?: true, head_tags: [], head_on_remote?: false}
+      loose = %{dirty?: true, version_tagged?: true, head_on_remote?: false}
 
       assert Preflight.problems(facts(loose), :ci) == []
     end
   end
 
   describe "problems/2 in :publish mode" do
-    test "is empty for a tagged, pushed, clean release commit" do
+    test "is empty for a pushed, clean, not-yet-tagged release commit" do
       assert Preflight.problems(facts(), :publish) == []
     end
 
@@ -77,11 +77,17 @@ defmodule Mix.Tasks.Hieroglyph.PreflightTest do
       assert problem =~ "no remote branch"
     end
 
-    test "rejects a HEAD that is not tagged for this version" do
-      mistagged = facts(%{head_tags: ["v1.6.1"]})
+    test "rejects a version whose tag already exists" do
+      republished = facts(%{version_tagged?: true})
 
-      assert [problem] = Preflight.problems(mistagged, :publish)
-      assert problem =~ "v1.6.2"
+      assert [problem] = Preflight.problems(republished, :publish)
+      assert problem =~ "v1.6.2 already exists"
+    end
+
+    test "accepts an untagged HEAD — the tag is cut after publishing" do
+      untagged = facts(%{version_tagged?: false})
+
+      assert Preflight.problems(untagged, :publish) == []
     end
 
     test "reports every failing check at once" do
@@ -89,7 +95,7 @@ defmodule Mix.Tasks.Hieroglyph.PreflightTest do
         facts(%{
           version: "9.9.9",
           dirty?: true,
-          head_tags: [],
+          version_tagged?: true,
           head_on_remote?: false
         })
 
@@ -130,7 +136,7 @@ defmodule Mix.Tasks.Hieroglyph.PreflightTest do
     defaults = %{
       version: "1.6.2",
       changelog: @clean,
-      head_tags: ["v1.6.2"],
+      version_tagged?: false,
       dirty?: false,
       head_on_remote?: true
     }

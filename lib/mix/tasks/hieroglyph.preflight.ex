@@ -35,7 +35,7 @@ defmodule Mix.Tasks.Hieroglyph.Preflight do
   @type facts :: %{
           version: String.t(),
           changelog: String.t(),
-          head_tags: [String.t()],
+          version_tagged?: boolean(),
           dirty?: boolean(),
           head_on_remote?: boolean()
         }
@@ -105,7 +105,7 @@ defmodule Mix.Tasks.Hieroglyph.Preflight do
       {unreleased_entries(sections) != [], unreleased_problem(facts.version)},
       {facts.dirty?, "working tree is dirty — commit or stash first"},
       {not facts.head_on_remote?, "HEAD is on no remote branch — push first"},
-      {tag not in facts.head_tags, tag_problem(tag)}
+      {facts.version_tagged?, tag_problem(tag)}
     ]
     |> Enum.filter(&elem(&1, 0))
     |> Enum.map(&elem(&1, 1))
@@ -119,7 +119,8 @@ defmodule Mix.Tasks.Hieroglyph.Preflight do
 
   @spec tag_problem(String.t()) :: String.t()
   defp tag_problem(tag) do
-    "tag #{tag} does not point at HEAD — tag the release commit first"
+    "tag #{tag} already exists — this version was published already; " <>
+      "bump the version before publishing again"
   end
 
   @spec latest_release([section()]) :: String.t() | nil
@@ -166,13 +167,13 @@ defmodule Mix.Tasks.Hieroglyph.Preflight do
 
   @spec gather(Path.t()) :: facts()
   defp gather(root) do
-    tags = git(root, ["tag", "--points-at", "HEAD"])
+    version = Project.config()[:version]
     remotes = git(root, ["branch", "--remotes", "--contains", "HEAD"])
 
     %{
-      version: Project.config()[:version],
+      version: version,
       changelog: File.read!(Path.join(root, "CHANGELOG.md")),
-      head_tags: String.split(tags, "\n", trim: true),
+      version_tagged?: git(root, ["tag", "--list", "v" <> version]) != "",
       dirty?: git(root, ["status", "--porcelain"]) != "",
       head_on_remote?: remotes != ""
     }

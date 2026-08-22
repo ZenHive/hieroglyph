@@ -158,7 +158,8 @@ defmodule ABI.Mixfile do
       ci: ["precommit.full"],
       # Shadows the real task so a release cannot be published while the
       # metadata disagrees with the code: entries still parked under
-      # [Unreleased], a dirty tree, an unpushed HEAD, or a missing tag.
+      # [Unreleased], a dirty tree, an unpushed HEAD, or a version whose
+      # tag already exists (the tag itself is cut AFTER a manual publish).
       # Args fall through to the last step, so `mix hex.publish docs`
       # and `--dry-run` still work.
       "hex.publish": ["hieroglyph.preflight", "hex.publish"]
