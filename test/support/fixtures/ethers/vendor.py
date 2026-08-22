@@ -9,7 +9,9 @@ recorded in PROVENANCE.md. Output is byte-stable for a given upstream tarball,
 so a re-run on an unchanged corpus leaves the working tree clean.
 """
 
+import base64
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -17,6 +19,13 @@ import tarfile
 import urllib.request
 
 TARBALL = "https://registry.npmjs.org/@ethersproject/testcases/-/testcases-5.8.0.tgz"
+# npm registry `dist.integrity` for testcases 5.8.0, re-derived from the
+# downloaded bytes. The corpus is only usable as an INDEPENDENT ORACLE if the
+# bytes it came from are the bytes upstream published, so the download is
+# verified rather than trusted: a registry compromise, a proxy rewrite or a
+# truncated transfer would otherwise regenerate a corpus that silently
+# redefines what "correct" means for the whole wire-format suite.
+TARBALL_INTEGRITY = "sha512-Jx/g2GoLwW0nv3/QpB9/Yfla1TPaqTop2lfa4HTOSGHKk4Q++aGoMUkZG/KrsuNdbHnROrXogjLTMqq6TauQNQ=="
 CORPORA = (
     "contract-interface",
     "contract-interface-abi2",
@@ -28,9 +37,21 @@ RANDOM_STRIDE = 5
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def verify(raw: bytes) -> None:
+    """Abort unless the downloaded tarball matches the pinned npm integrity."""
+    digest = "sha512-" + base64.b64encode(hashlib.sha512(raw).digest()).decode()
+    if digest != TARBALL_INTEGRITY:
+        raise SystemExit(
+            "tarball integrity mismatch\n  expected %s\n  got      %s"
+            % (TARBALL_INTEGRITY, digest)
+        )
+
+
 def fetch() -> dict:
     with urllib.request.urlopen(TARBALL) as response:
         raw = response.read()
+
+    verify(raw)
 
     corpora = {}
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:

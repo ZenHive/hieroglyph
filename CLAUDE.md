@@ -26,6 +26,20 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 
 Canonical gate: **`mix ci`** (= `precommit.full`) — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`), then `ex_dna --max-clones 0`, `reach.check --arch --smells`, `deps.audit.gated`, `dialyzer.json --quiet`, `agents.check`, `hieroglyph.manifest --check`. A clean `mix ci` is the merge bar. (`mix precommit` = the base steps only, no dialyzer/ex_dna/reach/audit. `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
 
+**Nothing runs `mix ci` automatically — this repo has no CI.** The GitHub Actions
+workflows were deleted in `a3a1d14`; `.github/` now holds only `dependabot.yml`, and
+the `.circleci/config.yml` in the tree is inherited from the `exthereum/abi` fork
+parent (last touched upstream in 2018, `working_directory: ~/abi`, installs
+libsecp256k1 build deps this fork does not use) — treat it as an unconnected
+artifact, not a gate. `mix ci` is therefore enforced by whoever runs it: the
+developer host and the harness reviewer agent in its run worktree. Two of its steps
+cannot run anywhere else at all — `deps.audit.gated` shells out to
+`bin/advisory-freshness.sh` in the sibling `onchain-stack` checkout, and
+`agents.check` shells out to `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh`
+— so both are developer-host-only by construction. A reviewer that cannot reach those
+paths is running a strictly smaller gate than the one described above and should say
+so rather than report a clean `mix ci`.
+
 **The `.json` mix tasks emit JSON BY DESIGN — that is expected output, never an error or a broken setup:**
 
 - **`mix test.json`** (from the `ex_unit_json` dep) — ExUnit results as a JSON document for machine parsing; identical run to `mix test`. Parse it for failures; the JSON envelope itself is never a failure signal. `--cover` can emit a large per-module coverage blob — pipe to a file (`--output /tmp/cov.json`) and `jq` the summary, don't dump it to the transcript.
@@ -41,7 +55,7 @@ The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`,
   `mix deps.audit` — `mix_audit` discards its own sync exit status, so a frozen advisory DB
   would otherwise still report green. This repo carries no `.mix_audit_ignore` (audit is clean).
 
-**`mix hieroglyph.mutants` is NOT part of `mix ci`** — it mutates `lib/` in place and spawns a full `mix test` per mutant, which does not belong in a per-commit gate. Run `MIX_ENV=test mix hieroglyph.mutants` when the encoder, decoder, selector or event paths change, and update the mutant table in `docs/abi-verification-ledger.md`. It reverts every file byte-exactly and exits non-zero on a surprise (a mutant that should die and didn't, a survivor that unexpectedly died, or an anchor that no longer matches its site exactly once).
+**`mix hieroglyph.mutants` is NOT part of `mix ci`** — it mutates `lib/` in place and spawns a full `mix test` per mutant, which does not belong in a per-commit gate. Run `MIX_ENV=test mix hieroglyph.mutants` when the encoder, decoder, selector or event paths change, and update the mutant table in `docs/abi-verification-ledger.md`. It runs a control pass over the vector files on unmutated `lib/` first (without it a already-failing vector suite makes every mutant read as killed), reverts every file byte-exactly, and exits non-zero on a surprise (a mutant that should die and didn't, a survivor that unexpectedly died, an anchor that no longer matches its site exactly once, or a file that did not come back byte-exact). The `after` clause covers exceptions but not signals, so the original bytes also go to a `.hieroglyph-mutants.orig` sidecar; a leftover sidecar means an interrupted run and the task refuses to start until it is cleared (`git checkout -- lib/ && rm lib/**/*.hieroglyph-mutants.orig`).
 
 (Claude-family agents with the user's global skills can invoke `elixir:ex-unit-json` and `elixir:dialyzer-json` for the full flag/jq reference. For every other agent — the cross-family harness reviewers — the notes above are self-contained.)
 

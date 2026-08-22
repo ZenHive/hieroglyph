@@ -49,3 +49,9 @@ src/*_parser.erl
 # Hex package tarballs from `mix hex.build` (regenerated on publish)
 /*.tar
 
+
+# Byte-cache from running test/support/fixtures/ethers/vendor.py
+__pycache__/
+
+# Crash backups from `mix hieroglyph.mutants` (a leftover means an interrupted run)
+*.hieroglyph-mutants.orig

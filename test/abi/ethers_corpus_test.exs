@@ -27,6 +27,29 @@ defmodule ABI.EthersCorpusTest do
   alias ABI.EthersCorpus, as: Corpus
   alias ABI.FunctionSelector
 
+  # Every other assertion in this file is `assert compare(...) == []`, and
+  # `compare/2` folds an empty corpus to `[]`. A fixture that was truncated,
+  # emptied, or silently re-filtered would therefore pass every test in the
+  # file while asserting nothing at all. PROVENANCE.md pins the exact vendored
+  # counts; this pins them in the suite, so the oracle cannot go vacuous
+  # without failing.
+  describe "corpus integrity" do
+    test "each vendored file holds the vector count PROVENANCE.md records" do
+      counts =
+        Map.new(
+          ["contract-interface", "contract-interface-abi2", "contract-signatures", "contract-events"],
+          &{&1, length(Corpus.load(&1))}
+        )
+
+      assert counts == %{
+               "contract-interface" => 443,
+               "contract-interface-abi2" => 368,
+               "contract-signatures" => 376,
+               "contract-events" => 414
+             }
+    end
+  end
+
   describe "encode/2 against solc-recorded return data" do
     for corpus <- ["contract-interface", "contract-interface-abi2"] do
       test "#{corpus}: every vector encodes byte-for-byte" do

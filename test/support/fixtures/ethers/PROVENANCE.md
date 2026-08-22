@@ -7,7 +7,8 @@
 | Package | `@ethersproject/testcases` |
 | Version | 5.8.0 |
 | Tarball | `https://registry.npmjs.org/@ethersproject/testcases/-/testcases-5.8.0.tgz` |
-| License | MIT (ethers.js, © 2019 Richard Moore) |
+| Integrity | `sha512-Jx/g2GoLwW0nv3/QpB9/Yfla1TPaqTop2lfa4HTOSGHKk4Q++aGoMUkZG/KrsuNdbHnROrXogjLTMqq6TauQNQ==` |
+| License | MIT (ethers.js, © 2019 Richard Moore) — full text in `LICENSE.ethers.md` |
 | Upstream repo | https://github.com/ethers-io/ethers.js |
 | Fetched | 2026-08-22 |
 | Files taken | `package/testcases/{contract-interface,contract-interface-abi2,contract-signatures,contract-events}.json.gz` |
@@ -26,9 +27,16 @@ corpus, and `ethereum/tests` `ABITests/basic_abi_tests.json` holds three vectors
 
     python3 test/support/fixtures/ethers/vendor.py
 
-The script downloads the tarball, slims each corpus, applies the filter below,
+The script downloads the tarball, **verifies it against the `Integrity` hash
+above and aborts on a mismatch**, slims each corpus, applies the filter below,
 and rewrites the four JSON files in place. It is deterministic: re-running it
-against the same upstream tarball leaves the working tree unchanged.
+leaves the working tree unchanged.
+
+The integrity pin is what makes the corpus usable as an oracle. These vectors
+define what "correct" means for the entire wire-format suite, so they are
+verified rather than trusted: a registry compromise, a caching proxy that
+rewrites the response, or a truncated transfer would otherwise regenerate a
+corpus that silently redefines the expectations it exists to enforce.
 
 ## Filter criteria
 

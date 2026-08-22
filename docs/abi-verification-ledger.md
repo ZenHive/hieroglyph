@@ -93,8 +93,28 @@ digest order" selector rule.
 Eight single-site edits to `lib/`, applied and reverted by
 `MIX_ENV=test mix hieroglyph.mutants`. The runner asserts each anchor matches
 its file exactly once (a moved site fails loudly rather than silently disarming
-the mutant) and verifies the SHA-256 of every touched file after the revert, so
-the working tree is byte-clean afterwards.
+the mutant), refuses to grade a mutant whose `replace` leaves the file
+byte-identical, and verifies the SHA-256 of every touched file after the
+revert — aborting the whole run if a file does not come back byte-exact,
+rather than mutating the next file on top of a tree that is already wrong.
+
+Two properties of that guarantee are worth stating precisely, because the
+earlier wording overstated them:
+
+* **The revert covers exceptions, not signals.** `try/after` restores the file
+  when anything raises, but Ctrl-C reaches the BEAM break handler and
+  `erlang:halt` unwinds nothing — and essentially all of a run's wall-clock
+  time is spent inside `mix test` with `lib/` mutated. The original bytes are
+  therefore also written to a `.hieroglyph-mutants.orig` sidecar before each
+  mutation and removed only once the restore is verified. A leftover sidecar
+  means a run was killed mid-mutation, and the task refuses to start until it
+  is cleared (`git checkout -- lib/ && rm lib/**/*.hieroglyph-mutants.orig`).
+* **A control run precedes the corpus.** Every mutant is graded by "did the
+  vector files go non-zero", so vector files that are already failing would
+  make every mutant read as `:killed` and report a perfect score against a
+  broken oracle. The runner asserts they pass on unmutated `lib/` first. This
+  matters most for `--only`, which otherwise selects away the single
+  `:survivor` mutant whose expectation would have caught the same breakage.
 
 Two runs are recorded per mutant and kept apart: **vectors** (only the two
 files added by this task) and **suite** (the whole `mix test` run). Only the

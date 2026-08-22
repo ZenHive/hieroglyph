@@ -9,6 +9,14 @@ defmodule ABI.SpecTest do
   never by running this library. Authorities and fetch dates are recorded in
   `docs/abi-verification-ledger.md`.
 
+  One assertion is deliberately self-referential and is called out here so the
+  claim above stays exact: the selector test compares `ABI.method_id/1` against
+  a slice of `ABI.Math.kec/1`, which is this library's own digest and is itself
+  a mutation site. That comparison pins the slice *position* (the leading four
+  bytes, not some other window); what pins the digest itself is the external
+  literal `0xa9059cbb` on the following line, and that literal is what kills
+  both the `keccak-digest-reversed` and `selector-slice-shifted` mutants.
+
   These close the three round-trip blind spots named in roadmap task 44:
 
     * the *value* of a dynamic head/tail offset, which `ABI.TypeDecoder` never
@@ -216,7 +224,9 @@ defmodule ABI.SpecTest do
       assert [topic] = ABI.encode_event_topics(selector, [who])
       assert topic == ~h[0x0000000000000000000000001eb324b9959c03d9b256267c353894aaafc0929c]
 
-      data = ABI.encode("(uint256)", [{42}])
+      # A hand-written single-word payload, not `ABI.encode/2` output: this file
+      # must not take its expected bytes from the library under test.
+      data = ~h[0x000000000000000000000000000000000000000000000000000000000000002a]
 
       assert ABI.decode_event(selector, data, [topic]) ==
                {:ok, "Anon", %{"who" => who, "amount" => 42}}

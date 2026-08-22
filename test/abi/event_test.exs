@@ -80,6 +80,39 @@ defmodule ABI.EventTest do
     end
   end
 
+  describe "encode_event_topics/2 argument validation" do
+    test "raises when more indexed values are supplied than the event declares" do
+      selector = FunctionSelector.decode("Transfer(address indexed from,address indexed to,uint256 amount)")
+
+      assert_raise ArgumentError, ~r/got 3 indexed values for 2 indexed event parameters/, fn ->
+        ABI.encode_event_topics(selector, [<<1::160>>, <<2::160>>, <<3::160>>])
+      end
+    end
+
+    test "raises when a fixed-size indexed array has the wrong element count" do
+      selector = FunctionSelector.decode("Shaped(uint256[2] indexed pair)")
+
+      assert_raise ArgumentError, ~r/array size mismatch: expected 2, got 3/, fn ->
+        ABI.encode_event_topics(selector, [[1, 2, 3]])
+      end
+    end
+
+    test "raises when an indexed tuple has the wrong member count" do
+      selector = FunctionSelector.decode("Placed((uint256,uint256) indexed point)")
+
+      assert_raise ArgumentError, ~r/tuple size mismatch: expected 2, got 3/, fn ->
+        ABI.encode_event_topics(selector, [{1, 2, 3}])
+      end
+    end
+
+    test "accepts an indexed tuple given as a list, identically to a tuple" do
+      selector = FunctionSelector.decode("Placed((uint256,uint256) indexed point)")
+
+      assert ABI.encode_event_topics(selector, [[3, 4]]) ==
+               ABI.encode_event_topics(selector, [{3, 4}])
+    end
+  end
+
   describe "indexed reference-type parameters (upstream #53)" do
     # Per the Solidity ABI spec, indexed parameters of reference type
     # (all arrays — fixed-size or dynamic — plus string, bytes, and
