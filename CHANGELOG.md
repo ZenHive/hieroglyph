@@ -1,3 +1,21 @@
+# 1.6.2 - 2026-08-22
+
+* **Widened — `{:descripex, "~> 0.12.0"}` → `{:descripex, "~> 0.12"}`.** The
+  three-segment cap was correct about the risk (descripex 0.12.0 turned
+  `short_name` from atom to string at a *minor*) and wrong about who pays for
+  it: because the requirement ships in the published package, the cap made
+  every descripex minor a forced release in each of nine consumers, and it
+  capped them transitively too — a consumer of hieroglyph could not resolve
+  descripex 0.13.0 no matter what its own bound said. In-family the cap
+  protected nothing, since `mix.lock` is committed everywhere and a new
+  descripex can only arrive through a deliberate `mix deps.update` behind
+  `mix ci`. Widening is not a narrowing, so this is a patch: no consumer that
+  resolved before can fail to resolve now.
+* **Verified against descripex 0.13.0.** Full suite green — 426 tests,
+  96.6% coverage, dialyzer clean, no reach smell findings. 0.13.0 is additive
+  (a new `typeless_params/1`, plus schema keys on params that previously
+  shipped none); hieroglyph reads neither.
+
 # 1.6.1 - 2026-08-17
 
 * **Dependency refresh.** Resolved the published `descripex 0.12.1` patch

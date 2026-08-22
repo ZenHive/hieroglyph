@@ -5,7 +5,7 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.6.1",
+      version: "1.6.2",
       # 1.18 floor: `lib/` uses `Enum.sum_by/2` (added in Elixir 1.18) on the
       # tuple/array encode path, so a lower floor would compile with only a
       # warning and then die at runtime in a consumer's first encode call.
