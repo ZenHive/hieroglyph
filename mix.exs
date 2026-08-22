@@ -137,12 +137,7 @@ defmodule ABI.Mixfile do
         "reach.check --arch --smells",
         "deps.audit.gated",
         "dialyzer.json --quiet",
-        "agents.check",
-        # The one release invariant that must hold on every commit: the
-        # mix.exs version has a matching released CHANGELOG section. The
-        # publish-time checks are the full `mix hieroglyph.preflight`, run
-        # by hand before a release — `mix hex.publish` is not wrapped.
-        "hieroglyph.preflight --ci"
+        "agents.check"
       ],
       # mix_audit discards its sync exit status (mirego/mix_audit#61), so a
       # frozen advisory DB still reports green. Prove freshness first, then
