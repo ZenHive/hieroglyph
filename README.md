@@ -16,7 +16,7 @@ The package can be installed by adding `hieroglyph` to your list of dependencies
 ```elixir
 def deps do
   [
-    {:hieroglyph, "~> 1.5"}
+    {:hieroglyph, "~> 1.7"}
   ]
 end
 ```
@@ -215,7 +215,7 @@ iex> ABI.parse_specification([%{"type" => "function", "name" => "transfer", "inp
 
 ### Decoding event logs
 
-Event logs arrive as `{data, topics}` pairs from the JSON-RPC node. `ABI.decode_event/4` (or the lower-level `ABI.Event.decode_event/4`) splits indexed parameters out of the topics and decodes non-indexed parameters from the data blob. By default it verifies that `topics[0]` matches the keccak256 of the event signature; pass `check_event_signature: false` to skip that check when decoding anonymous events or when `topics` intentionally omits the signature slot.
+Event logs arrive as `{data, topics}` pairs from the JSON-RPC node. `ABI.decode_event/4` (or the lower-level `ABI.Event.decode_event/4`) splits indexed parameters out of the topics and decodes non-indexed parameters from the data blob. By default it verifies that `topics[0]` matches the keccak256 of the event signature. An event parsed from a JSON ABI with `"anonymous": true` is handled natively — no `topics[0]` slot is expected and no signature check runs. Pass `check_event_signature: false` when the event is given as a signature string (which cannot express anonymity) or when `topics` intentionally omits the signature slot.
 
 Errors come back as a closed atom-tagged set — `{:error, {:event_signature_mismatch, %{expected: _, got: _}}}` when `topics[0]` doesn't match the expected signature, `{:error, {:topics_length_mismatch, _}}` when the topic count is wrong for the indexed-parameter count, and `{:error, {:malformed_data, _}}` when the non-indexed payload fails to decode. Pattern-match the tag rather than parsing strings.
 
