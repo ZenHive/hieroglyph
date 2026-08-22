@@ -14,10 +14,11 @@ defmodule Mix.Tasks.Hieroglyph.Preflight do
 
   Wired two ways. `--ci` runs as a `mix ci` step and asserts the single
   invariant that holds *between* releases: the `mix.exs` version has a
-  matching released `CHANGELOG.md` section. The full gate shadows
-  `mix hex.publish`, so a release cannot go out with entries still parked
-  under `[Unreleased]`, a dirty tree, a HEAD no remote has, or a missing
-  `v<version>` tag.
+  matching released `CHANGELOG.md` section. The full gate is run by hand
+  before `mix hex.publish` — it is not wrapped around that task — and
+  fails on entries still parked under `[Unreleased]`, a dirty tree, a HEAD
+  no remote has, or a `v<version>` tag that already exists (the tag is cut
+  *after* a successful publish, so at publish time it must still be free).
 
   It deliberately does **not** run the test suite. `mix ci` is that gate;
   this task only checks that the release metadata tells the truth about

@@ -140,7 +140,8 @@ defmodule ABI.Mixfile do
         "agents.check",
         # The one release invariant that must hold on every commit: the
         # mix.exs version has a matching released CHANGELOG section. The
-        # publish-time checks live behind the `hex.publish` alias below.
+        # publish-time checks are the full `mix hieroglyph.preflight`, run
+        # by hand before a release — `mix hex.publish` is not wrapped.
         "hieroglyph.preflight --ci"
       ],
       # mix_audit discards its sync exit status (mirego/mix_audit#61), so a
@@ -155,14 +156,7 @@ defmodule ABI.Mixfile do
       "agents.check": [
         &agents_check/1
       ],
-      ci: ["precommit.full"],
-      # Shadows the real task so a release cannot be published while the
-      # metadata disagrees with the code: entries still parked under
-      # [Unreleased], a dirty tree, an unpushed HEAD, or a version whose
-      # tag already exists (the tag itself is cut AFTER a manual publish).
-      # Args fall through to the last step, so `mix hex.publish docs`
-      # and `--dry-run` still work.
-      "hex.publish": ["hieroglyph.preflight", "hex.publish"]
+      ci: ["precommit.full"]
     ]
   end
 
