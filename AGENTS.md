@@ -609,6 +609,8 @@ The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`,
   `mix deps.audit` — `mix_audit` discards its own sync exit status, so a frozen advisory DB
   would otherwise still report green. This repo carries no `.mix_audit_ignore` (audit is clean).
 
+**`mix hieroglyph.mutants` is NOT part of `mix ci`** — it mutates `lib/` in place and spawns a full `mix test` per mutant, which does not belong in a per-commit gate. Run `MIX_ENV=test mix hieroglyph.mutants` when the encoder, decoder, selector or event paths change, and update the mutant table in `docs/abi-verification-ledger.md`. It reverts every file byte-exactly and exits non-zero on a surprise (a mutant that should die and didn't, a survivor that unexpectedly died, or an anchor that no longer matches its site exactly once).
+
 (Claude-family agents with the user's global skills can invoke `elixir:ex-unit-json` and `elixir:dialyzer-json` for the full flag/jq reference. For every other agent — the cross-family harness reviewers — the notes above are self-contained.)
 
 ## Layout
@@ -621,6 +623,10 @@ The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`,
 - `lib/abi/math.ex` — shared 32-byte padding helpers (`pad/4`, `unpad/3`) plus `mod/2` and `kec/1` (keccak256). Encoder/decoder delegate here instead of duplicating the byte-domain padding formula.
 - `src/*.xrl` / `src/*.yrl` — leex/yecc grammar; compiled by the `:yecc, :leex` Mix compilers (see `mix.exs:18`). Edit the `.xrl`/`.yrl`, never the generated `.erl`.
 - `lib/mix/tasks/hieroglyph.manifest.ex` — `mix hieroglyph.manifest [path]` task that emits `api_manifest.json` from `ABI.__descripex_modules__/0`; `--check` regenerates in memory and fails on drift (ignoring `generated_at`). Consumed by downstream cartouche/onchain CI as a contract-stability artifact; the check is a `mix ci` step.
+- `test/support/fixtures/ethers/` — vendored `@ethersproject/testcases` 5.8.0 vectors (MIT), recorded from `solc` output. The **independent oracle**: `test/abi/ethers_corpus_test.exs` asserts against them byte-for-byte with no `decode(encode(x))` step. Provenance + filter criteria in `PROVENANCE.md`; re-vendor with `vendor.py`.
+- `test/abi/abi_spec_test.exs` — spec-anchored assertions, each citing its ABI-spec section: the head/tail offset VALUE (which the decoder never reads back), the length word, and padding direction.
+- `test/support/mutants/` + `test/support/mix/tasks/hieroglyph.mutants.ex` — the planted-mutant corpus and its runner. Deliberately under `test/support/` (not `lib/`) so the runner stays out of the 95% coverage gate.
+- `docs/abi-verification-ledger.md` — authorities with fetch dates, the mutant table, and the survivor review. Read it before touching the encoder, decoder, selector or event paths.
 
 ## Gotchas
 

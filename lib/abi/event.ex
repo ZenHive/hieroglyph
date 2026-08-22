@@ -264,7 +264,14 @@ defmodule ABI.Event do
           keyword()
         ) :: {:ok, String.t() | nil, map()} | {:error, decode_error()}
   defp do_decode_event(data, topics, function_selector, opts) do
-    check_event_signature = Keyword.get(opts, :check_event_signature, true)
+    # An anonymous event emits no topics[0], so there is neither a slot to
+    # decode nor a signature to verify (abi-spec.html#events). `event_topic0/1`
+    # already honours this on the encode side; folding it in here keeps the two
+    # directions symmetric -- without it every anonymous log fails as
+    # `:topics_length_mismatch`.
+    check_event_signature =
+      Keyword.get(opts, :check_event_signature, true) and
+        not anonymous_event?(function_selector)
 
     # Solidity's own ABI JSON always emits a `name` for every event input
     # (possibly ""), but hand-written or partial ABI JSON can omit the key

@@ -679,6 +679,18 @@ defmodule ABI.TypeEncoder do
     end
   end
 
+  # A static `T[k]` is inlined into the head as `enc(X[0]) ... enc(X[k-1])`
+  # (abi-spec.html#formal-specification-of-the-encoding), so it occupies
+  # `k` times the head size of its element type -- not one word. Counting it
+  # as one word understates `tail_start` for every dynamic sibling.
+  defp do_count(%{type: {:array, sub_type, element_count} = t}) do
+    if FunctionSelector.dynamic?(t) do
+      1
+    else
+      element_count * do_count(%{type: sub_type})
+    end
+  end
+
   defp do_count(_), do: 1
 
   @spec data_to_list([arg_type()], [any()] | tuple() | map()) :: [any()]

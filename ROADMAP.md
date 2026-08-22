@@ -9,11 +9,11 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (11 of 13 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (12 of 14 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 44 — Independent-oracle + planted-mutant verification for the ABI wire format on 2026-08-22
 
-**Up next:** Task 44 — Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋
+**Up next:** Task 45 — Gate api_manifest.json freshness in mix ci [D:2/B:6/U:5 → Eff:2.75] 🎯
 <!-- FOCUS:END -->
 
 ---
@@ -61,7 +61,8 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 | Task 41 | ✅ | 🎁 **peer_parity** · ABI.encode_constructor/2 (deploy-time argument encoding) [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
 | Task 42 | ✅ | 🎁 **peer_parity** · ABI.format_abi_item/1 (FunctionSelector -> canonical signature string) [D:3/B:3/U:4 → Eff:1.17?] 📋 |
 | Task 43 | ✅ | 🎁 **agent_economy** · SKILL.md for AI-agent consumers of the ABI library [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 44 | ⬜ | 🎁 **peer_parity** · 🔒 Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋 |
+| Task 44 | ✅ | 🎁 **peer_parity** · 🔒 Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋 |
+| Task 45 `[CX]` | ⬜ | 🎁 **agent_economy** · Gate api_manifest.json freshness in mix ci [D:2/B:6/U:5 → Eff:2.75] 🎯 |
 <!-- TASKS:END -->
 
 ---
