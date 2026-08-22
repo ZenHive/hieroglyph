@@ -100,13 +100,17 @@ defmodule ABI.Mixfile do
         "sobelow --skip --exit low"
       ],
       # CI mirror — adds ex_dna clone detection, reach PDG arch/smell gates,
-      # the security-advisory audit, dialyzer, and AGENTS.md freshness. Matches
-      # the onchain-family canonical gate (see onchain-stack/CLAUDE.md). Order
-      # is append-after-`precommit`, not the family's canonical step order —
-      # this repo's `cover_gate/1` mechanism (below) predates and supersedes
-      # the family's `cmd env MIX_ENV=test mix ...` step form.
+      # the security-advisory audit, dialyzer, AGENTS.md freshness, and
+      # api_manifest.json freshness. Matches the onchain-family canonical
+      # gate (see onchain-stack/CLAUDE.md). Order is append-after-`precommit`,
+      # not the family's canonical step order — this repo's `cover_gate/1`
+      # mechanism (below) predates and supersedes the family's
+      # `cmd env MIX_ENV=test mix ...` step form.
       "precommit.full": [
         "precommit",
+        # After `precommit` so the project is compiled. Mix.Task.rerun/2
+        # because Mix runs a given task name at most once per VM.
+        &manifest_check/1,
         "ex_dna --max-clones 0",
         "reach.check --arch --smells",
         "deps.audit.gated",
@@ -167,7 +171,8 @@ defmodule ABI.Mixfile do
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.10", only: :dev},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
-      # Reach 2.8.2 caps ex_ast at ~> 0.12.0; Reach uses APIs retained by ex_ast 0.13.
+      # Reach 2.8.2 caps ex_ast at ~> 0.12.0; Reach uses APIs retained
+      # by ex_ast 0.13.
       {:ex_ast, "~> 0.13", override: true, only: [:dev, :test], runtime: false},
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
@@ -191,6 +196,12 @@ defmodule ABI.Mixfile do
       ["--check"],
       "AGENTS.md freshness check"
     )
+  end
+
+  @spec manifest_check([String.t()]) :: :ok
+  defp manifest_check(_args) do
+    Mix.Task.rerun("hieroglyph.manifest", ["--check"])
+    :ok
   end
 
   @spec advisory_freshness([String.t()]) :: :ok

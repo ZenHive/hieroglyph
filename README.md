@@ -295,6 +295,7 @@ Static manifest emission (JSON-serializable representation of every annotated fu
 ```bash
 mix hieroglyph.manifest                    # writes api_manifest.json in project root
 mix hieroglyph.manifest /path/to/out.json  # custom output path
+mix hieroglyph.manifest --check            # fail if committed file drifted (ignores generated_at)
 
 # Equivalent direct invocation of the descripex builtin:
 mix descripex.manifest --app hieroglyph --pretty --output api_manifest.json

@@ -24,7 +24,7 @@ Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes
 
 ## Toolchain & check commands (read before judging a build)
 
-Canonical gate: **`mix ci`** (= `precommit.full`) — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`), then `ex_dna --max-clones 0`, `reach.check --arch --smells`, `deps.audit.gated`, `dialyzer.json --quiet`, `agents.check`. A clean `mix ci` is the merge bar. (`mix precommit` = the base steps only, no dialyzer/ex_dna/reach/audit. `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
+Canonical gate: **`mix ci`** (= `precommit.full`) — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`), then `ex_dna --max-clones 0`, `reach.check --arch --smells`, `deps.audit.gated`, `dialyzer.json --quiet`, `agents.check`, `hieroglyph.manifest --check`. A clean `mix ci` is the merge bar. (`mix precommit` = the base steps only, no dialyzer/ex_dna/reach/audit. `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
 
 **The `.json` mix tasks emit JSON BY DESIGN — that is expected output, never an error or a broken setup:**
 
@@ -52,7 +52,7 @@ The other gate tools are plain-text: `mix credo --strict`, `mix doctor --raise`,
 - `lib/abi/parser.ex` — `@moduledoc false` walker; wraps `:ethereum_abi_parser.parse/1`, normalizes the AST, and rejects unsupported types (`fixed`/`ufixed`) at parse time (`:function` rejection lifted in 1.3.0 — it now encodes/decodes as a 24-byte payload)
 - `lib/abi/math.ex` — shared 32-byte padding helpers (`pad/4`, `unpad/3`) plus `mod/2` and `kec/1` (keccak256). Encoder/decoder delegate here instead of duplicating the byte-domain padding formula.
 - `src/*.xrl` / `src/*.yrl` — leex/yecc grammar; compiled by the `:yecc, :leex` Mix compilers (see `mix.exs:18`). Edit the `.xrl`/`.yrl`, never the generated `.erl`.
-- `lib/mix/tasks/hieroglyph.manifest.ex` — `mix hieroglyph.manifest [path]` task that emits `api_manifest.json` from `ABI.__descripex_modules__/0`; consumed by downstream cartouche/onchain CI as a contract-stability artifact.
+- `lib/mix/tasks/hieroglyph.manifest.ex` — `mix hieroglyph.manifest [path]` task that emits `api_manifest.json` from `ABI.__descripex_modules__/0`; `--check` regenerates in memory and fails on drift (ignoring `generated_at`). Consumed by downstream cartouche/onchain CI as a contract-stability artifact; the check is a `mix ci` step.
 
 ## Gotchas
 

@@ -1,6 +1,8 @@
 defmodule ABI.AgentEconomyTest do
   use ExUnit.Case, async: true
 
+  alias Mix.Tasks.Hieroglyph.Manifest
+
   @annotated_modules [
     ABI,
     ABI.Event,
@@ -151,11 +153,10 @@ defmodule ABI.AgentEconomyTest do
 
   describe "mix hieroglyph.manifest" do
     test "writes descripex JSON to a custom output path" do
-      out = Path.join(System.tmp_dir!(), "manifest_#{System.unique_integer([:positive])}.json")
+      out = tmp_manifest()
 
       try do
-        Mix.Task.reenable("hieroglyph.manifest")
-        Mix.Task.run("hieroglyph.manifest", [out])
+        Manifest.run([out])
 
         assert %{"modules" => modules} = Jason.decode!(File.read!(out))
         assert Enum.any?(modules, &(&1["module"] == "ABI"))
@@ -163,5 +164,51 @@ defmodule ABI.AgentEconomyTest do
         File.rm(out)
       end
     end
+
+    test "--check passes when the committed manifest matches, ignoring generated_at" do
+      out = tmp_manifest()
+
+      try do
+        Manifest.run([out])
+        original = File.read!(out)
+
+        Manifest.run(["--check", out])
+
+        assert File.read!(out) == original
+      after
+        File.rm(out)
+      end
+    end
+
+    test "--check fails with a readable diff when the committed manifest has drifted" do
+      out = tmp_manifest()
+
+      try do
+        Manifest.run([out])
+
+        mutated =
+          out
+          |> File.read!()
+          |> String.replace(~s("version": "1.0"), ~s("version": "0.0"))
+
+        File.write!(out, mutated)
+
+        error =
+          assert_raise Mix.Error, fn ->
+            Manifest.run(["--check", out])
+          end
+
+        assert error.message =~ "stale"
+        assert error.message =~ ~s(-  "version": "0.0")
+        assert error.message =~ ~s(+  "version": "1.0")
+      after
+        File.rm(out)
+      end
+    end
+  end
+
+  @spec tmp_manifest() :: Path.t()
+  defp tmp_manifest do
+    Path.join(System.tmp_dir!(), "manifest_#{System.unique_integer([:positive])}.json")
   end
 end

@@ -24,7 +24,10 @@
             "params": {
               "data": {
                 "description": "ABI-encoded payload bytes (no 4-byte selector prefix). Use decode_call/3 for selector-prefixed calldata.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "opts": {
                 "description": "Keyword options. decode_structs: true returns a map keyed by snake_case atoms derived from parameter names instead of a list. strict: true rejects non-canonical padding, trailing bytes, and dynamic length overruns with {:error, {:strict_violation, detail}}. Field-name atoms must already exist in the VM atom table — reference them in your code (e.g., a module attribute or compile-time list) before calling, otherwise decode raises ArgumentError. This bounds atom creation to your declared field set.",
@@ -61,7 +64,10 @@
               },
               "calldata": {
                 "description": "Full selector-prefixed calldata bytes. Must be at least 4 bytes; first 4 bytes are the method ID and the remainder is the ABI-encoded payload.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "errors": [
@@ -107,13 +113,16 @@
                 "description": "Keyword options forwarded to decode/3, including strict: true.",
                 "kind": "value"
               },
-              "revert_data": {
-                "description": "Selector-prefixed revert payload (4-byte error ID + ABI-encoded args), e.g. the data field returned by a Solidity 0.8.4+ custom-error revert.",
-                "kind": "value"
-              },
               "error_definitions": {
                 "description": "List of candidate error signatures, each either a raw signature string (\"InsufficientBalance(uint256,uint256)\") or a pre-parsed ABI.FunctionSelector. The first definition whose 4-byte selector matches revert_data[0..3] is used to decode the payload. The built-in Error(string) (0x08c379a0) and Panic(uint256) (0x4e487b71) errors are recognized implicitly as a fallback, so they resolve even when this list is empty; a user definition colliding with a built-in selector still wins.",
                 "kind": "value"
+              },
+              "revert_data": {
+                "description": "Selector-prefixed revert payload (4-byte error ID + ABI-encoded args), e.g. the data field returned by a Solidity 0.8.4+ custom-error revert.",
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "errors": [
@@ -152,7 +161,10 @@
             "params": {
               "data": {
                 "description": "Non-indexed event data — the data field of the Ethereum log.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "opts": {
                 "description": "Keyword options. check_event_signature: false skips the topics[0] verification (useful when topics[0] has already been stripped).",
@@ -164,7 +176,13 @@
               },
               "topics": {
                 "description": "List of 32-byte topic hashes (the topics field of the log). topics[0] is verified against the event signature unless check_event_signature: false is passed.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
               }
             },
             "errors": [
@@ -202,9 +220,9 @@
         {
           "arity": 1,
           "name": "describe",
-          "description": "Return Level 2 function list for a module (by full atom or short name).",
+          "description": "Return Level 2 function list for a module (by full atom, or short name as string or atom).",
           "signature": "describe(mod_or_short)",
-          "spec": "describe(module() | atom()) :: [map()]",
+          "spec": "describe(module() | atom() | String.t()) :: [map()]",
           "defaults": 0,
           "hints": {}
         },
@@ -213,7 +231,7 @@
           "name": "describe",
           "description": "Return Level 3 function detail (or `nil` if not found).",
           "signature": "describe(mod_or_short, func_name)",
-          "spec": "describe(module() | atom(), atom()) :: map() | nil",
+          "spec": "describe(module() | atom() | String.t(), atom()) :: map() | nil",
           "defaults": 0,
           "hints": {}
         },
@@ -229,7 +247,11 @@
             "params": {
               "data": {
                 "description": "List of values to encode, in argument order. Tuples or maps are accepted for struct-typed args.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "function_signature": {
                 "description": "Either a raw signature string (for example, transfer(address,uint256)) or a pre-parsed ABI.FunctionSelector struct.",
@@ -254,7 +276,11 @@
             "params": {
               "data": {
                 "description": "List of values to encode, in argument order.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "opts": {
                 "description": "Reserved keyword options; currently unused.",
@@ -286,7 +312,11 @@
             "params": {
               "data": {
                 "description": "List of constructor argument values, in declaration order.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "selector": {
                 "description": "A pre-parsed ABI.FunctionSelector with function_type: :constructor (constructors have no name, so no signature-string form is accepted). Typically obtained from parse_specification/1 by finding the :constructor entry.",
@@ -315,7 +345,11 @@
             "params": {
               "data": {
                 "description": "List of values to encode, in argument order.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "opts": {
                 "description": "Reserved keyword options; currently unused.",
@@ -376,7 +410,11 @@
             "params": {
               "values": {
                 "description": "List of values in argument order. Tuple/struct types and nested arrays raise ArgumentError — Solidity's spec does not define their packed encoding.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "signature_or_selector": {
                 "description": "Signature string with a function name (e.g. \"leaf(address,uint256)\") or a pre-parsed FunctionSelector. The name is ignored in packed mode but is required by the parser to flatten the type list. Paren-only signatures like \"(address,uint256)\" parse as a single struct argument and raise per the spec.",
@@ -454,7 +492,10 @@
             "params": {
               "name": {
                 "description": "Fragment name to match against FunctionSelector.function.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "arg_types": {
                 "description": "Optional list of internal input types (e.g. [:address, {:uint, 256}]) matching FunctionSelector.types type fields. Pass nil when the name is unique or to surface {:ambiguous, _} on overloads.",
@@ -521,7 +562,13 @@
             "params": {
               "doc": {
                 "description": "ABI specification as a list of maps — typically produced by JSON-decoding a contract's .abi.json file. Every entry is parsed into a FunctionSelector, including non-function entries (constructor, fallback, receive, error, event) — distinguish via the :function_type field.",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
               }
             },
             "returns": {
@@ -566,7 +613,7 @@
         {
           "arity": 4,
           "name": "decode_event",
-          "description": "Decodes an event, including handling parsing out data from topics.\n\nReturns `{:ok, function_name, args_map}` on success, or `{:error, reason}` where\n`reason` is one of the variants in `t:decode_error/0`.\n\n## Examples\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:ok,\n      \"Transfer\", %{\n        \"amount\" => 20000000000,\n        \"from\" => ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n        \"to\" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]\n    }}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x0000000000000000000000000000000000000000000000000000000000000001],\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:error,\n      {:event_signature_mismatch,\n       %{\n         expected: ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n         got: ~h[0x0000000000000000000000000000000000000000000000000000000000000001]\n       }}}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:error, {:topics_length_mismatch, %{got: 2, expected: 3}}}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   },\n    ...>   check_event_signature: false\n    ...> )\n    {:ok,\n      \"Transfer\", %{\n        \"amount\" => 20000000000,\n        \"from\" => ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n        \"to\" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]\n    }}\n\nWhen the non-indexed payload bytes are truncated or wrongly typed, the underlying\ndecoder previously raised; the function now wraps that path and returns\n`{:error, {:malformed_data, msg}}` with a human-readable description.",
+          "description": "Decodes an event, including handling parsing out data from topics.\n\nReturns `{:ok, function_name, args_map}` on success, or `{:error, reason}` where\n`reason` is one of the variants in `t:decode_error/0`.\n\n## Examples\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:ok,\n      \"Transfer\", %{\n        \"amount\" => 20000000000,\n        \"from\" => ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n        \"to\" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]\n    }}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x0000000000000000000000000000000000000000000000000000000000000001],\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:error,\n      {:event_signature_mismatch,\n       %{\n         expected: ~h[0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef],\n         got: ~h[0x0000000000000000000000000000000000000000000000000000000000000001]\n       }}}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   })\n    {:error, {:topics_length_mismatch, %{got: 2, expected: 3}}}\n\n    iex> ABI.Event.decode_event(\n    ...>   ~h[0x00000000000000000000000000000000000000000000000000000004a817c800],\n    ...>   [\n    ...>     ~h[0x000000000000000000000000b2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n    ...>     ~h[0x0000000000000000000000007795126b3ae468f44c901287de98594198ce38ea]\n    ...>   ],\n    ...>   %ABI.FunctionSelector{\n    ...>     function: \"Transfer\",\n    ...>     types: [\n    ...>       %{type: :address, name: \"from\", indexed: true},\n    ...>       %{type: :address, name: \"to\", indexed: true},\n    ...>       %{type: {:uint, 256}, name: \"amount\"},\n    ...>     ]\n    ...>   },\n    ...>   check_event_signature: false\n    ...> )\n    {:ok,\n      \"Transfer\", %{\n        \"amount\" => 20000000000,\n        \"from\" => ~h[0xb2b7c1795f19fbc28fda77a95e59edbb8b3709c8],\n        \"to\" => ~h[0x7795126b3ae468f44c901287de98594198ce38ea]\n    }}\n\nWhen the non-indexed payload bytes are truncated or wrongly typed, the underlying\ndecoder previously raised; the function now wraps that path and returns\n`{:error, {:malformed_data, msg}}` with a human-readable description.\n\nInputs whose type map carries no `:name` at all — possible with hand-written\nor partial ABI JSON, since Solidity always emits the key — are keyed by their\npositional index as a string (`\"0\"`, `\"1\"`, …).",
           "signature": "decode_event(data, topics, function_selector, opts \\\\ [])",
           "spec": "decode_event(binary(), [binary()], ABI.FunctionSelector.t(), keyword()) ::\n  {:ok, String.t() | nil, map()} | {:error, decode_error()}",
           "defaults": 1,
@@ -576,21 +623,30 @@
               "data": {
                 "description": "Non-indexed event payload (binary); originates from the log's data field returned by eth_getLogs",
                 "source": "eth_getLogs",
-                "kind": "exchange_data"
+                "kind": "exchange_data",
+                "schema": {
+                  "type": "string"
+                }
               },
               "opts": {
                 "default": [],
                 "description": "Optional keyword list. Supports check_event_signature: false to skip topics[0] verification (anonymous events or pre-stripped topics), and strict: true to reject non-canonical payloads.",
                 "kind": "value"
               },
-              "topics": {
-                "description": "List of topic binaries (each 32 bytes). topics[0] is the event signature hash unless check_event_signature is false",
-                "source": "eth_getLogs",
-                "kind": "exchange_data"
-              },
               "function_selector": {
                 "description": "Pre-parsed FunctionSelector with type metadata including indexed flags",
                 "kind": "value"
+              },
+              "topics": {
+                "description": "List of topic binaries (each 32 bytes). topics[0] is the event signature hash unless check_event_signature is false",
+                "source": "eth_getLogs",
+                "kind": "exchange_data",
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
               }
             },
             "errors": [
@@ -692,7 +748,10 @@
             "params": {
               "signature": {
                 "description": "Signature string such as transfer(address,uint256), or a parenthesized type list such as (uint256,bool); supports nested tuples and arrays, optional parameter names, and the indexed keyword for event parameters",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -716,7 +775,10 @@
             "params": {
               "type_string": {
                 "description": "Comma-separated type names such as string,uint256 (no surrounding parens, no function name); empty string returns []",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -737,7 +799,10 @@
             "params": {
               "single_type": {
                 "description": "Single Solidity type such as uint256, (bool,address), or address[][3]; supports nested tuples and arrays",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -759,12 +824,18 @@
               "names": {
                 "default": false,
                 "description": "When true, append parameter names after each type (uses :name from the argument map, or var0/var1/... when missing)",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "boolean"
+                }
               },
               "indexed": {
                 "default": false,
                 "description": "When true, append the indexed keyword after parameter types whose argument map carries indexed: true (event signatures)",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "boolean"
+                }
               },
               "function_selector": {
                 "description": "FunctionSelector with :function and :types",
@@ -792,7 +863,10 @@
             "params": {
               "item": {
                 "description": "Map decoded from a contract ABI JSON entry, with string keys: type (function/event/error/...), name, inputs, outputs, stateMutability, components for tuples",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "object"
+                }
               }
             },
             "returns": {
@@ -820,7 +894,11 @@
             "params": {
               "data": {
                 "description": "List of values in argument order; tuples may be passed as Elixir tuples, lists for arrays, and named maps for tuple/struct types whose argument metadata carries :name",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "function_selector": {
                 "description": "Pre-parsed FunctionSelector. When :function is non-nil, the 4-byte method id is prepended; when nil, the head/tail body is emitted without prefix",
@@ -848,7 +926,11 @@
             "params": {
               "data": {
                 "description": "List of values in argument order; same value shapes accepted as encode_raw/2 (numbers, binaries, lists for arrays)",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "types": {
                 "description": "List of FunctionSelector argument-type maps (each %{type: ...}) describing the parameter sequence. Tuple/struct types and nested arrays raise — the spec does not define their packed encoding.",
@@ -876,7 +958,11 @@
             "params": {
               "data": {
                 "description": "List of values in type order; same shapes accepted as encode/2 (tuples, lists, named maps)",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               },
               "types": {
                 "description": "List of FunctionSelector argument-type maps (each %{type: ...} optionally with :name) describing the parameter sequence",
@@ -920,7 +1006,10 @@
               },
               "encoded_data": {
                 "description": "Raw ABI payload (selector prefix already stripped); pass the binary that follows the 4-byte method id",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -944,15 +1033,24 @@
             "params": {
               "data": {
                 "description": "Binary containing one padded ABI word followed by remaining bytes",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "size_in_bytes": {
                 "description": "Logical field width to extract from the padded slot",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "integer"
+                }
               },
               "padding_direction": {
                 "description": "Side that was padded — :left for address/uint/int, :right for bytes<M>/string",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -982,7 +1080,10 @@
               },
               "encoded_data": {
                 "description": "Raw ABI payload — for example return values, event log data, or pre-routed calldata",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -1008,13 +1109,20 @@
                 "description": "List of FunctionSelector argument-type maps; each must carry :name for the struct branch to apply",
                 "kind": "value"
               },
-              "elements": {
-                "description": "Decoded values in the same order as types",
-                "kind": "value"
-              },
               "decode_structs": {
                 "description": "Boolean flag. When true and every type has a non-empty :name, returns a map; otherwise returns a tuple",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "elements": {
+                "description": "Decoded values in the same order as types",
+                "kind": "value",
+                "schema": {
+                  "items": {},
+                  "type": "array"
+                }
               }
             },
             "returns": {
@@ -1042,7 +1150,10 @@
             "params": {
               "data": {
                 "description": "Binary input of any length",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -1063,11 +1174,18 @@
             "params": {
               "x": {
                 "description": "Integer dividend (any sign)",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "integer"
+                }
               },
               "n": {
                 "description": "Positive integer divisor",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
               }
             },
             "returns": {
@@ -1093,15 +1211,29 @@
               },
               "bin": {
                 "description": "The binary content to pad",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "direction": {
                 "description": "Padding side — :left for left-aligned types like uint/int/address, :right for right-padded types like bytes<M> and string",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "enum": [
+                    "left",
+                    "right"
+                  ],
+                  "type": "string"
+                }
               },
               "size_in_bytes": {
                 "description": "Logical field width used to compute the word boundary; output is rounded up to the next 32-byte multiple from this value",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
               }
             },
             "returns": {
@@ -1122,15 +1254,29 @@
             "params": {
               "data": {
                 "description": "Binary containing one padded ABI word followed by remaining bytes",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "type": "string"
+                }
               },
               "size_in_bytes": {
                 "description": "Logical field width to extract from the padded slot",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
               },
               "padding_direction": {
                 "description": "Side that was padded — :left for address/uint/int, :right for bytes<M>/string",
-                "kind": "value"
+                "kind": "value",
+                "schema": {
+                  "enum": [
+                    "left",
+                    "right"
+                  ],
+                  "type": "string"
+                }
               }
             },
             "returns": {
@@ -1145,5 +1291,5 @@
       "namespace": "/math"
     }
   ],
-  "generated_at": "2026-06-05T00:49:31.463366Z"
+  "generated_at": "2026-08-22T07:02:14.219010Z"
 }
