@@ -858,7 +858,7 @@ shipped_in = "6fd584a72b8e6bde5ec5914f52fb94ea30d00d54"
 id = 45
 phase = 5
 bundle = "agent_economy"
-status = "pending"
+status = "done"
 title = "Gate api_manifest.json freshness in mix ci"
 scores = { d = 2, b = 6, u = 5 }
 markers = ["cx"]
@@ -878,5 +878,12 @@ The gate has one wrinkle worth naming: the task stamps `generated_at` on every r
 
 Right-size note: the regeneration itself is a one-command inline fix. What earns a task is the gate — without it the next dependency bump re-drifts the artifact, and the repo learns about it the same accidental way it did this time.
 """
+implemented = "mix hieroglyph.manifest gained a --check mode that regenerates the manifest in memory and compares it against the committed api_manifest.json ignoring only generated_at, failing with a +/- diff on drift; wired into precommit.full so a descripex upgrade or an api() edit cannot silently drift the artifact. Both directions covered in test/abi/agent_economy_test.exs. The CHANGELOG entry was added post-land by the orchestrator: the reviewer reverted it because reviewers must not deliver CHANGELOG changes."
+delivered_by = "cursor"
+verified = true
+verified_by = "codex"
+verification_ref = "harness-run:run-1787381652201-0353f368"
 created_at = "2026-08-22"
 scored_at = "2026-08-22"
+done_at = "2026-08-22"
+shipped_in = "b681b5e799867bce13bf32e92190d4aede75e7f5"

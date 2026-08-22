@@ -56,7 +56,13 @@ defmodule ABI.Mixfile do
 
   @spec cli() :: keyword()
   def cli do
-    [preferred_envs: ["test.json": :test, "dialyzer.json": :dev]]
+    [
+      preferred_envs: [
+        "test.json": :test,
+        "dialyzer.json": :dev,
+        "check.dispatch": :test
+      ]
+    ]
   end
 
   # Run "mix help compile.app" to learn about applications.
@@ -98,6 +104,22 @@ defmodule ABI.Mixfile do
         # is treated as the binary name). Spawn a fresh `mix` in :test instead.
         &cover_gate/1,
         "sobelow --skip --exit low"
+      ],
+      # Dispatch-scale gate handed to the harness reviewer as `check_command`.
+      # Deliberately omits `agents.check`: harness prepends an ephemeral
+      # instruction preamble to AGENTS.md inside the reviewer worktree, which
+      # that check correctly reports as drift — a red the reviewer can neither
+      # fix nor ignore. Freshness stays enforced by `precommit.full`, which
+      # runs on the landed base where no preamble exists. Also omits the
+      # coverage gate and dialyzer, which are landed-base concerns.
+      "check.dispatch": [
+        "compile --warnings-as-errors",
+        "format --check-formatted",
+        "credo --strict --ignore TagTODO,TagFIXME",
+        "doctor --raise",
+        "ex_dna --max-clones 0",
+        "sobelow --skip --exit low",
+        "test.json --exclude integration"
       ],
       # CI mirror — adds ex_dna clone detection, reach PDG arch/smell gates,
       # the security-advisory audit, dialyzer, AGENTS.md freshness, and

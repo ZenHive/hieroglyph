@@ -1325,7 +1325,7 @@
       "id": 45,
       "phase": 5,
       "bundle": "agent_economy",
-      "status": "pending",
+      "status": "done",
       "title": "Gate api_manifest.json freshness in mix ci",
       "scores": {
         "d": 2,
@@ -1370,9 +1370,16 @@
         "elixir",
         "ci"
       ],
+      "shipped_in": "b681b5e799867bce13bf32e92190d4aede75e7f5",
       "body": "api_manifest.json is a committed contract-stability artifact consumed by the downstream cartouche/onchain CI, and nothing verifies it still matches the code that generates it.\n\nDiscovered 2026-08-22 while landing task 44. A bare `mix hieroglyph.manifest` against the currently locked descripex produces a large diff against the committed file: descripex 0.13 emits `schema` objects on `:value` params (`{\"type\": \"string\"}`, array/enum/minimum shapes) that the committed manifest predates, and it rewrote the `describe/1` description and spec (`module() | atom()` -> `module() | atom() | String.t()`). None of that came from a hieroglyph change — the artifact simply drifted behind a dependency upgrade that `mix ci` had no way to notice. Task 44 deliberately restored the committed file rather than regenerating it, because its acceptance criteria required the manifest to come out unchanged; the drift is real and still there.\n\nThe gate has one wrinkle worth naming: the task stamps `generated_at` on every run, so a byte comparison can never pass. `--check` must compare everything except that field.\n\nRight-size note: the regeneration itself is a one-command inline fix. What earns a task is the gate — without it the next dependency bump re-drifts the artifact, and the repo learns about it the same accidental way it did this time.\n",
       "created_at": "2026-08-22",
+      "done_at": "2026-08-22",
       "scored_at": "2026-08-22",
+      "implemented": "mix hieroglyph.manifest gained a --check mode that regenerates the manifest in memory and compares it against the committed api_manifest.json ignoring only generated_at, failing with a +/- diff on drift; wired into precommit.full so a descripex upgrade or an api() edit cannot silently drift the artifact. Both directions covered in test/abi/agent_economy_test.exs. The CHANGELOG entry was added post-land by the orchestrator: the reviewer reverted it because reviewers must not deliver CHANGELOG changes.",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "codex",
+      "verification_ref": "harness-run:run-1787381652201-0353f368",
       "cross_repo": []
     }
   ]
