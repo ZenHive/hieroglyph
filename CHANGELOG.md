@@ -1,3 +1,17 @@
+# 1.8.0 - 2026-08-26
+
+* **Raised — `{:descripex, "~> 0.12"}` → `{:descripex, "~> 1.0"}`.** descripex
+  1.0.0 shipped 2026-08-26 and the old bound's `< 1.0.0` ceiling excluded it
+  outright — `mix deps.update descripex` could not resolve past 0.13.0
+  without this edit. The requirement stays two-segment on purpose: the
+  break-on-minor history that justified a tighter cap belongs to descripex's
+  0.x line, and does not apply post-1.0 under semver. hieroglyph is the top
+  of this dependency cascade (only descripex sits above it), so it adopts
+  first; cartouche and everything downstream stay on `descripex ~> 0.12`
+  until they pick up this release.
+* **Verified against descripex 1.0.0.** Full suite green — 460 tests, no
+  runtime code changed.
+
 # 1.7.0 - 2026-08-22
 
 * **Fixed — a static `T[k]` argument was counted as one head slot, corrupting every dynamic sibling's offset.** The Solidity ABI inlines a static fixed-size array into the head as `enc(X[0]) … enc(X[k-1])`, so it occupies `k` times the head size of its element type. `ABI.TypeEncoder`'s `do_count/1` accounted for inlined static *tuples* but not for arrays and counted `address[3]` as a single word, so `ABI.encode("(bytes,address[3])", …)` wrote a tail offset of `0x40` where Solidity writes `0x80`. Nothing in the suite could see it: `ABI.TypeDecoder` parses the head word into `{:dynamic, type, tail_position}` and then discards `tail_position`, consuming the tail sequentially instead — so the offset is round-trip-invisible **by non-use**, and only an external reader (a contract, an explorer, another library) ever notices. 79 of 811 vendored `solc`-derived vectors failed against the old behaviour.

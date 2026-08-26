@@ -5,7 +5,7 @@ defmodule ABI.Mixfile do
   def project do
     [
       app: :hieroglyph,
-      version: "1.7.0",
+      version: "1.8.0",
       # 1.18 floor: `lib/` uses `Enum.sum_by/2` (added in Elixir 1.18) on the
       # tuple/array encode path, so a lower floor would compile with only a
       # warning and then die at runtime in a consumer's first encode call.
@@ -178,10 +178,12 @@ defmodule ABI.Mixfile do
       # Two-segment on purpose: the three-segment cap turned every descripex
       # minor into a forced nine-repo release cascade, while the committed
       # `mix.lock` already blocks a silent in-family upgrade — a new descripex
-      # lands only through a deliberate `mix deps.update` behind `mix ci`. The
-      # break-on-minor history that earned the cap (0.12.0 turned `short_name`
-      # from atom to string) is being retired at descripex, not paid for here.
-      {:descripex, "~> 0.12"},
+      # lands only through a deliberate `mix deps.update` behind `mix ci`.
+      # descripex 1.0.0 (2026-08-26) is the stable major this cap was always
+      # meant to reach for; the break-on-minor history that earned the cap
+      # on 0.x (0.12.0 turned `short_name` from atom to string) does not
+      # apply post-1.0 under semver.
+      {:descripex, "~> 1.0"},
       {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.4", only: [:dev, :test], runtime: false},
