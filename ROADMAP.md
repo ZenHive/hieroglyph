@@ -9,11 +9,11 @@
 **Task completion rule:** a task is not done until its docs land. At minimum every task produces a CHANGELOG entry under `## [Unreleased]`; user-facing surface changes also update README; architectural/convention changes also update CLAUDE.md.
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 5 — Peer-Library Parity (13 of 15 done · 0 in progress)
+**Focus phase:** 5 — Peer-Library Parity (13 of 15 done · 1 in progress)
 
 **Last shipped:** Task 44 — Independent-oracle + planted-mutant verification for the ABI wire format, Task 45 — Gate api_manifest.json freshness in mix ci on 2026-08-22
 
-**Up next:** Task 46 — muex sweep over the ABI surface, graded against the task 44 planted-mutant corpus [D:4/B:6/U:3 → Eff:1.12] 📋
+**Up next:** none — focus phase complete or all blocked
 <!-- FOCUS:END -->
 
 ---
@@ -63,7 +63,7 @@ The encode-side symmetry trio (`encode_call/3`, `encode_error/3`, `encode_event_
 | Task 43 | ✅ | 🎁 **agent_economy** · SKILL.md for AI-agent consumers of the ABI library [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
 | Task 44 | ✅ | 🎁 **peer_parity** · 🔒 Independent-oracle + planted-mutant verification for the ABI wire format [D:5/B:8/U:6 → Eff:1.4] 📋 |
 | Task 45 `[CX]` | ✅ | 🎁 **agent_economy** · Gate api_manifest.json freshness in mix ci [D:2/B:6/U:5 → Eff:2.75] 🎯 |
-| Task 46 | ⬜ | 🎁 **peer_parity** · 🔒 muex sweep over the ABI surface, graded against the task 44 planted-mutant corpus [D:4/B:6/U:3 → Eff:1.12] 📋 |
+| Task 46 | 🔄 | 🎁 **peer_parity** · 🔒 muex sweep over the ABI surface, graded against the task 44 planted-mutant corpus [D:4/B:6/U:3 → Eff:1.12] 📋 |
 <!-- TASKS:END -->
 
 ---

@@ -1,3 +1,21 @@
+# Unreleased
+
+* **Added — `{:muex, "~> 0.9", only: [:dev, :test], runtime: false}`,** for
+  on-demand mutation-adequacy measurement. It is deliberately **not** a `mix ci`
+  gate: it mutates `lib/` in place and spawns a full suite per mutant. The 0.9
+  floor is not cosmetic — 0.8.2 could not report a surviving mutant on Elixir
+  1.20 at all (Oeditus/muex#20), and 0.9.0 carries the sandbox fix that makes
+  `test/` subdirectories visible to a narrowed run, without which the vendored
+  ethers vector corpus is invisible.
+* **Added — 71 tests, taking the suite from 460 to 531,** each written to kill a
+  specific mutant the campaign left standing rather than to raise a coverage
+  number. They pin, among others: the exact overflow-message bounds
+  `ABI.TypeEncoder` reports (the interpolated limits are a diagnostic contract a
+  caller reads, so a mutated bound is a real defect, not a cosmetic one), the
+  `FunctionClauseError` contract for a negative fixed-array length in
+  `ABI.FunctionSelector.dynamic?/1`, and packed-encoding edge cases in
+  `ABI.encode_packed/2`. No runtime code changed.
+
 # 1.8.0 - 2026-08-26
 
 * **Raised — `{:descripex, "~> 0.12"}` → `{:descripex, "~> 1.0"}`.** descripex

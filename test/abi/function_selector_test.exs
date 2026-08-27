@@ -126,6 +126,22 @@ defmodule ABI.FunctionSelectorTest do
                returns: :function
              } = FunctionSelector.decode("foo(uint256)->function")
     end
+
+    test "`function` is static — encoded in place, never head/tail" do
+      # `dynamic?/1` is what TypeEncoder/TypeDecoder consult to decide
+      # whether a head slot holds the value or a tail offset. The 24-byte
+      # external pointer is right-padded into a single word and written in
+      # place; classifying it as dynamic would put an offset there instead.
+      refute FunctionSelector.dynamic?(:function)
+
+      pointer = <<1::160, 0xA9, 0x05, 0x9C, 0xBB>>
+      assert byte_size(pointer) == 24
+
+      assert ABI.encode("foo(function,uint256)", [pointer, 7]) ==
+               ABI.method_id("foo(function,uint256)") <>
+                 <<1::160, 0xA9, 0x05, 0x9C, 0xBB, 0::64>> <>
+                 <<7::256>>
+    end
   end
 
   describe "lexer/parser identifier handling for `x` and fixed/ufixed keywords" do
@@ -268,6 +284,44 @@ defmodule ABI.FunctionSelectorTest do
     test "non-zero fixed arrays still inherit dynamic? from element type" do
       refute FunctionSelector.dynamic?({:array, :address, 3})
       assert FunctionSelector.dynamic?({:array, :string, 3})
+    end
+
+    # A negative fixed length is not a Solidity type and the grammar cannot
+    # produce one, but `dynamic?/1` is public and callers can hand-build a
+    # type tuple. It must refuse rather than answer: the `len > 0` guard is
+    # the only thing standing between `{:array, T, -1}` and a confident
+    # `dynamic?/1` verdict on a type that has no layout at all. Drop the
+    # guard and the clause silently returns the element type's dynamism.
+    test "negative fixed array length has no dynamic? answer" do
+      assert_raise FunctionClauseError, fn ->
+        FunctionSelector.dynamic?({:array, :bool, -1})
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        FunctionSelector.dynamic?({:array, :string, -1})
+      end
+    end
+  end
+
+  describe "parse-error position reporting" do
+    # `ABI.Parser.parse!/2` prepends a disambiguating start token
+    # (`expecting selector` / `expecting type`) so the shared grammar knows
+    # which production to enter. That token carries line 1, and on input the
+    # lexer reduces to nothing it is the only token the parser sees — so it
+    # is also the token yecc reports the syntax error at. Pinning the line
+    # keeps the reported position at the start of the user's input.
+
+    test "decode/1 on empty input reports the error at line 1" do
+      error = assert_raise MatchError, fn -> FunctionSelector.decode("") end
+
+      assert {:error, {1, :ethereum_abi_parser, _message}} = error.term
+    end
+
+    test "decode_type/1 on empty input reports the error at line 1" do
+      error =
+        assert_raise MatchError, fn -> FunctionSelector.decode_type("") end
+
+      assert {:error, {1, :ethereum_abi_parser, _message}} = error.term
     end
   end
 end

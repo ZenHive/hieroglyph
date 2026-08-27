@@ -63,6 +63,18 @@ defmodule ABI.DecodeErrorTest do
                ABI.decode_error(<<>>, ["NotFound()"])
     end
 
+    test "returns :calldata_too_short at exactly one byte short" do
+      # The guard is `byte_size(revert_data) < 4`, so 3 bytes is the
+      # boundary case: one byte fewer than a selector. Anything looser
+      # falls through to the `<<actual::binary-size(4), _::binary>>` match
+      # and raises MatchError instead of returning the tagged error.
+      assert {:error, :calldata_too_short} =
+               ABI.decode_error(<<0x08, 0xC3, 0x79>>, ["NotFound()"])
+
+      assert {:error, :calldata_too_short} =
+               ABI.decode_error(<<0x08, 0xC3, 0x79>>, [])
+    end
+
     test "returns :no_match when no definition's selector matches" do
       # 4 bytes that won't collide with NotFound() selector.
       bad_revert = <<0xDE, 0xAD, 0xBE, 0xEF>>

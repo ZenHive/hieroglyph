@@ -200,6 +200,14 @@ defmodule ABI.Mixfile do
       {:ex_ast, "~> 0.13", override: true, only: [:dev, :test], runtime: false},
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      # Mutation-adequacy measurement (roadmap task 46), on demand only —
+      # never a `mix ci` gate. 0.9.0 floor is not cosmetic: 0.8.2 could not
+      # report a surviving mutant on Elixir 1.20 at all (Oeditus/muex#20),
+      # and 0.9.0 carries the sandbox fix (#25) that symlinks `test/`
+      # subdirectories into worker sandboxes — without it the vendored
+      # ethers vector corpus under test/support/fixtures/ is invisible to
+      # a narrowed run.
+      {:muex, "~> 0.9", only: [:dev, :test], runtime: false},
       {:stream_data, "~> 1.1", only: :test}
     ]
   end

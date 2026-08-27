@@ -113,6 +113,80 @@ defmodule ABI.EventTest do
     end
   end
 
+  describe "encode_event_topics/2 nested reference members" do
+    # The topic preimage of an indexed reference type is the *in-place*
+    # (packed-ish) encoding of its members, never the head/tail ABI
+    # encoding: each member is padded to a whole word and concatenated.
+    # A member that is itself a reference type recurses through the same
+    # rule, so a dynamic member contributes only its padded payload — no
+    # tail offset and no length word.
+
+    test "a dynamic member of an indexed tuple contributes only padded bytes" do
+      selector = %FunctionSelector{
+        function: "Nested",
+        function_type: :event,
+        types: [
+          %{
+            name: "t",
+            type: {:tuple, [%{type: :string}, %{type: {:uint, 256}}]},
+            indexed: true
+          }
+        ]
+      }
+
+      # "abc" right-padded to one word, then the uint256 word. 64 bytes —
+      # the head/tail encoding of the same tuple would be 96 (offset word,
+      # length word, padded payload) and hash differently.
+      preimage = "abc" <> <<0::size(29 * 8)>> <> <<7::256>>
+      assert byte_size(preimage) == 64
+
+      assert ABI.encode_event_topics(selector, [{"abc", 7}]) == [
+               Event.event_signature(selector),
+               Math.kec(preimage)
+             ]
+    end
+
+    test "a dynamic member of an indexed dynamic array is padded in place" do
+      selector = %FunctionSelector{
+        function: "Listed",
+        function_type: :event,
+        types: [%{name: "names", type: {:array, :string}, indexed: true}]
+      }
+
+      preimage = "a" <> <<0::size(31 * 8)>> <> "bb" <> <<0::size(30 * 8)>>
+      assert byte_size(preimage) == 64
+
+      assert ABI.encode_event_topics(selector, [["a", "bb"]]) == [
+               Event.event_signature(selector),
+               Math.kec(preimage)
+             ]
+    end
+  end
+
+  describe "decode_event/4 indexed/non-indexed name collision" do
+    # Solidity forbids two parameters of one event sharing a name, but
+    # hand-written ABI JSON can do it (and an unnamed input is keyed by its
+    # positional index, which can collide with an explicit name). The
+    # non-indexed value wins: it is the fully recoverable one, whereas a
+    # topic slot may only carry a hash.
+    test "the non-indexed value wins when both slots share a name" do
+      selector = %FunctionSelector{
+        function: "Dup",
+        function_type: :event,
+        types: [
+          %{name: "x", type: :address, indexed: true},
+          %{name: "x", type: {:uint, 256}, indexed: false}
+        ]
+      }
+
+      topic0 = Event.event_signature(selector)
+      indexed_topic = <<0::96, 1::160>>
+
+      assert {:ok, "Dup", %{"x" => 99}} =
+               ABI.decode_event(selector, <<99::256>>, [topic0, indexed_topic])
+    end
+  end
+
   describe "indexed reference-type parameters (upstream #53)" do
     # Per the Solidity ABI spec, indexed parameters of reference type
     # (all arrays — fixed-size or dynamic — plus string, bytes, and

@@ -6,6 +6,12 @@ defmodule ABI.TypeDecoderTest do
 
   doctest TypeDecoder
 
+  # A 32-byte word whose most significant byte is set. Read as a full uint256
+  # it is a (nonsensically large) length prefix; read as anything narrower its
+  # high byte lands in the padding window instead.
+  @high_byte_word <<0xFF, 0::248>>
+  @high_byte_value :binary.decode_unsigned(@high_byte_word)
+
   describe "error paths" do
     test "raises when encoded data has bytes left over after consuming all types" do
       one_uint256_worth = 32
@@ -18,7 +24,7 @@ defmodule ABI.TypeDecoderTest do
     end
 
     test "raises when asked to decode an unrecognized type atom" do
-      assert_raise RuntimeError, ~r/Unsupported decoding type/, fn ->
+      assert_raise RuntimeError, "Unsupported decoding type: :banana", fn ->
         TypeDecoder.decode_raw(<<0::256>>, [%{type: :banana}])
       end
     end
@@ -107,9 +113,13 @@ defmodule ABI.TypeDecoderTest do
           TypeDecoder.decode_raw(encoded, tuple_type, decode_structs: true)
         end
 
-      assert err.message =~ "decode_structs: true requires the snake_case"
-      assert err.message =~ ":never_interned_field_xyz_z47_q"
-      assert err.message =~ "\"neverInternedFieldXyzZ47Q\""
+      assert err.message ==
+               "decode_structs: true requires the snake_case field atom " <>
+                 ":never_interned_field_xyz_z47_q (from ABI field " <>
+                 "\"neverInternedFieldXyzZ47Q\") to already exist in the VM atom table. " <>
+                 "Reference the atom in your code (e.g., in a module attribute, a `@type`, " <>
+                 "or a compile-time list) before the first decode call. See README " <>
+                 "\"Pre-interning atoms for decode_structs: true\" for guidance."
     end
 
     test "decodes successfully when the snake_case field atom has been interned" do
@@ -156,5 +166,239 @@ defmodule ABI.TypeDecoderTest do
 
       assert [{42, true}] = TypeDecoder.decode_raw(encoded, tuple_type, opts)
     end
+  end
+
+  describe "StrictViolation exception" do
+    test "carries the raised detail term and renders it into the message" do
+      err =
+        assert_raise TypeDecoder.StrictViolation, fn ->
+          TypeDecoder.decode_raw(<<0::248, 2>>, [%{type: :bool}], strict: true)
+        end
+
+      assert err.detail == {:invalid_bool, 2}
+      assert err.message == "strict ABI decode violation: {:invalid_bool, 2}"
+    end
+  end
+
+  describe "strict mode accepts canonical payloads" do
+    test "zero-padded uint8 and uint16 slots" do
+      assert strict_decode(<<0::248, 7>>, [%{type: {:uint, 8}}]) == [7]
+      assert strict_decode(<<0::240, 5::16>>, [%{type: {:uint, 16}}]) == [5]
+    end
+
+    test "a positive int8 padded with zero fill" do
+      assert strict_decode(<<0::248, 5>>, [%{type: {:int, 8}}]) == [5]
+    end
+
+    test "a negative value padded with 0xFF sign fill" do
+      # -5 sign-extended to a full word. The 0xFF fill is what makes the slot
+      # canonical, and the byte pattern is the same at both widths.
+      data = :binary.copy(<<0xFF>>, 31) <> <<0xFB>>
+
+      assert strict_decode(data, [%{type: {:int, 8}}]) == [-5]
+      assert strict_decode(data, [%{type: {:int, 64}}]) == [-5]
+    end
+
+    test "a bool whose value byte is the only non-zero byte in the slot" do
+      assert strict_decode(<<0::248, 1>>, [%{type: :bool}]) == [true]
+      assert strict_decode(<<0::256>>, [%{type: :bool}]) == [false]
+    end
+
+    test "a string whose content is padded up to the next word boundary" do
+      data = <<5::256>> <> "abcde" <> <<0::27*8>>
+
+      assert strict_decode(data, [%{type: :string}]) == ["abcde"]
+    end
+
+    test "a string whose length is an exact multiple of the 32-byte word" do
+      # 32 needs no alignment padding at all: the bound is exactly the
+      # content length, and the payload sits right on the >= boundary.
+      content = :binary.copy("a", 32)
+      data = <<32::256>> <> content
+
+      assert strict_decode(data, [%{type: :string}]) == [content]
+    end
+  end
+
+  describe "strict mode rejects non-canonical left padding" do
+    test "a uint8 slot with a non-zero byte above the value" do
+      detail = strict_detail(<<1::248, 5>>, [%{type: {:uint, 8}}])
+
+      assert detail == {:non_canonical_padding, %{type: {:uint, 8}}}
+    end
+
+    test "a uint64 slot with a byte set just above the value window" do
+      # Byte 23 is the last padding byte for a 64-bit value; a value width
+      # computed as anything wider would read straight past it.
+      data = <<0::23*8, 0xFF, 0::64>>
+      detail = strict_detail(data, [%{type: {:uint, 64}}])
+
+      assert detail == {:non_canonical_padding, %{type: {:uint, 64}}}
+    end
+
+    test "an int8 whose sign bit is set but whose fill is zero" do
+      detail = strict_detail(<<0::248, 0xFF>>, [%{type: {:int, 8}}])
+
+      assert detail == {:non_canonical_padding, %{type: {:int, 8}}}
+    end
+  end
+
+  describe "strict mode dynamic length bound" do
+    test "rejects a string whose content is not padded out to a full word" do
+      detail = strict_detail(<<5::256>> <> "abcde", [%{type: :string}])
+      expected = %{type: :string, length: 5, available: 5}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+
+    test "rejects a string with only a partial trailing word behind it" do
+      data = <<5::256>> <> "abcde" <> <<0::11*8>>
+      detail = strict_detail(data, [%{type: :string}])
+      expected = %{type: :string, length: 5, available: 16}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+
+    test "rejects a string length prefix whose high byte is set" do
+      detail = strict_detail(@high_byte_word, [%{type: :string}])
+      expected = %{type: :string, length: @high_byte_value, available: 0}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+
+    test "rejects a bytes length prefix whose high byte is set" do
+      detail = strict_detail(@high_byte_word, [%{type: :bytes}])
+      expected = %{type: :bytes, length: @high_byte_value, available: 0}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+
+    test "the bound is not applied outside strict mode" do
+      err =
+        assert_raise MatchError, fn ->
+          TypeDecoder.decode_raw(<<5::256>> <> "abcde", [%{type: :string}])
+        end
+
+      assert err.term == ""
+    end
+  end
+
+  describe "strict mode trailing bytes" do
+    test "reports how many bytes were left over" do
+      detail = strict_detail(<<0::256, 0, 0, 0>>, [%{type: {:uint, 256}}])
+
+      assert detail == {:trailing_bytes, 3}
+    end
+  end
+
+  describe "bool decoding" do
+    test "raises CaseClauseError naming the offending word when permissive" do
+      err =
+        assert_raise CaseClauseError, fn ->
+          TypeDecoder.decode_raw(<<0::248, 2>>, [%{type: :bool}])
+        end
+
+      assert err.term == 2
+    end
+  end
+
+  describe "array element-count bound" do
+    @two_word_tuple {:tuple, [%{type: {:uint, 256}}, %{type: {:uint, 256}}]}
+    @dynamic_tuple {:tuple, [%{type: :string}, %{type: {:uint, 256}}]}
+    @uint256_array [%{type: {:array, {:uint, 256}}}]
+
+    test "a static tuple element is counted at its full word width" do
+      # 3 elements x 2 static words = 6, against the 4 words behind the count.
+      data = <<3::256, 0::256, 0::256, 0::256, 0::256>>
+      types = [%{type: {:array, @two_word_tuple}}]
+      message = "Array element count 3 exceeds the 4 remaining 32-byte words"
+
+      assert_raise RuntimeError, message, fn ->
+        TypeDecoder.decode_raw(data, types)
+      end
+    end
+
+    test "a dynamic element is counted as exactly one tail-offset word" do
+      # 2 elements x 1 word fits the 2 words behind the count, so the bound
+      # does not fire; the decode then runs out of data on the first tail.
+      data = <<2::256, 0::256, 0::256>>
+
+      for type <- [:string, @dynamic_tuple] do
+        err =
+          assert_raise MatchError, fn ->
+            TypeDecoder.decode_raw(data, [%{type: {:array, type}}])
+          end
+
+        assert err.term == ""
+      end
+    end
+
+    test "a dynamic element still needs one word per element" do
+      data = <<5::256, 0::256>>
+      types = [%{type: {:array, :string}}]
+      message = "Array element count 5 exceeds the 1 remaining 32-byte words"
+
+      assert_raise RuntimeError, message, fn ->
+        TypeDecoder.decode_raw(data, types)
+      end
+    end
+
+    test "reports the count, array type and available bytes when strict" do
+      detail = strict_detail(<<5::256, 0::256>>, @uint256_array)
+      expected = %{type: {:array, {:uint, 256}}, length: 5, available: 32}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+
+    test "rejects an element count whose high byte is set" do
+      count = @high_byte_value
+      detail = strict_detail(@high_byte_word, @uint256_array)
+      expected = %{type: {:array, {:uint, 256}}, length: count, available: 0}
+
+      assert detail == {:length_out_of_bounds, expected}
+    end
+  end
+
+  describe "fixed-size bytes" do
+    test "bytes0 yields an empty binary and consumes no payload" do
+      types = [%{type: {:bytes, 0}}, %{type: {:uint, 256}}]
+
+      assert TypeDecoder.decode_raw(<<7::256>>, types) == [<<>>, 7]
+    end
+
+    test "rejects a fixed-size bytes wider than one word" do
+      assert_raise RuntimeError, "Unsupported decoding type: {:bytes, 33}", fn ->
+        TypeDecoder.decode_raw(<<0::256>>, [%{type: {:bytes, 33}}])
+      end
+    end
+  end
+
+  describe "tuple head/tail offsets" do
+    test "strict mode reads the tail-offset word as a full uint256 slot" do
+      # The two-pass decode returns elements in `types` order, so the
+      # tail-offset word is read but never dereferenced: all 32 bytes of it
+      # are uint256 content and carry no narrower padding constraint.
+      data = @high_byte_word <> <<3::256>> <> "abc" <> <<0::29*8>>
+      types = [%{type: {:tuple, [%{type: :string}]}}]
+
+      assert strict_decode(data, types) == [{"abc"}]
+    end
+  end
+
+  @spec strict_decode(binary(), [map()]) :: [term()]
+  defp strict_decode(data, types) do
+    TypeDecoder.decode_raw(data, types, strict: true)
+  end
+
+  # Asserts that a strict decode raises, and hands back the violation's
+  # detail term so each caller pins the exact payload rather than the shape.
+  @spec strict_detail(binary(), [map()]) :: term()
+  defp strict_detail(data, types) do
+    err =
+      assert_raise TypeDecoder.StrictViolation, fn ->
+        TypeDecoder.decode_raw(data, types, strict: true)
+      end
+
+    err.detail
   end
 end

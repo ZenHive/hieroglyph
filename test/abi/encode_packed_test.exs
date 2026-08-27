@@ -3,9 +3,10 @@ defmodule ABI.EncodePackedTest do
 
   alias ABI.FunctionSelector
   alias ABI.Math
+  alias ABI.TypeEncoder
 
   doctest ABI, only: [encode_packed: 2]
-  doctest ABI.TypeEncoder, only: [encode_packed: 2]
+  doctest TypeEncoder, only: [encode_packed: 2]
 
   describe "encode_packed/2 — golden vectors from Solidity spec" do
     test "canonical spec example for int16, bytes1, uint16, string" do
@@ -313,6 +314,151 @@ defmodule ABI.EncodePackedTest do
       # this input. The byte-exact match against the spec's encoding example
       # is the verification.
       assert packed == <<0xFF, 0xFF, 0x42, 0x00, 0x03>> <> "Hello, world!"
+    end
+  end
+
+  describe "encode_packed/2 — error contract (exact messages)" do
+    # Each assertion pins the caller-facing message byte-for-byte: these are
+    # the strings downstream consumers match on, so a one-character edit is a
+    # contract break, not a cosmetic change.
+
+    test "arity mismatch names both counts" do
+      assert_raise ArgumentError,
+                   "encode_packed arity mismatch: got 1 values for 2 types",
+                   fn -> ABI.encode_packed("foo(uint8,bool)", [42]) end
+    end
+
+    test "function with a wrong-sized binary names the byte count" do
+      assert_raise ArgumentError,
+                   "encode_packed function: size mismatch (expected 24 bytes, got 23)",
+                   fn -> ABI.encode_packed("foo(function)", [<<0::8*23>>]) end
+    end
+
+    test "function with a non-binary value inspects the value" do
+      assert_raise ArgumentError,
+                   "encode_packed function: expected 24-byte binary, got 42",
+                   fn -> ABI.encode_packed("foo(function)", [42]) end
+    end
+
+    test "bool with a non-boolean value inspects the value" do
+      assert_raise ArgumentError,
+                   "encode_packed bool: invalid value :nope",
+                   fn -> ABI.encode_packed("foo(bool)", [:nope]) end
+    end
+
+    test "bytesN size mismatch names the size and the actual byte count" do
+      assert_raise ArgumentError,
+                   "encode_packed bytes4: size mismatch (expected 4 bytes, got 1)",
+                   fn -> ABI.encode_packed("foo(bytes4)", [<<0x42>>]) end
+    end
+
+    test "fixed-size array size mismatch names both lengths" do
+      assert_raise ArgumentError,
+                   "encode_packed array: size mismatch (expected 3, got 2)",
+                   fn -> ABI.encode_packed("foo(uint256[3])", [[1, 2]]) end
+    end
+
+    test "top-level tuple/struct cites the Solidity spec section" do
+      assert_raise ArgumentError,
+                   "encode_packed: tuple/struct types are not supported by Solidity's packed mode (see https://docs.soliditylang.org/en/stable/abi-spec.html#non-standard-packed-mode)",
+                   fn -> ABI.encode_packed("(uint8,bool)", [{42, true}]) end
+    end
+
+    test "unrecognized type tag inspects the type" do
+      sel = %FunctionSelector{function: "foo", types: [%{type: {:weird, 8}}]}
+
+      assert_raise ArgumentError,
+                   "encode_packed: unsupported type {:weird, 8}",
+                   fn -> ABI.encode_packed(sel, [42]) end
+    end
+
+    test "fixed-size array nested in a dynamic array is rejected" do
+      assert_raise ArgumentError,
+                   "encode_packed: nested arrays are not supported by Solidity's packed mode",
+                   fn -> ABI.encode_packed("foo(uint256[2][])", [[[1, 2], [3, 4]]]) end
+    end
+
+    test "dynamic array nested in a dynamic array is rejected" do
+      assert_raise ArgumentError,
+                   "encode_packed: nested arrays are not supported by Solidity's packed mode",
+                   fn -> ABI.encode_packed("foo(uint256[][])", [[[1, 2], [3, 4]]]) end
+    end
+
+    test "tuple inside an array is rejected without the spec link" do
+      sel = %FunctionSelector{
+        function: "foo",
+        types: [%{type: {:array, {:tuple, [%{type: {:uint, 256}}]}}}]
+      }
+
+      assert_raise ArgumentError,
+                   "encode_packed: tuple/struct types are not supported by Solidity's packed mode",
+                   fn -> ABI.encode_packed(sel, [[{1}]]) end
+    end
+  end
+
+  describe "encode/2 — error contract (exact messages)" do
+    # The standard (non-packed) encoder shares ABI.TypeEncoder with
+    # encode_packed/2; its raise sites carry a distinct, unprefixed vocabulary
+    # that callers distinguish on, so they are pinned the same way.
+
+    test "function with a wrong-sized binary spells out the 24-byte layout" do
+      assert_raise ArgumentError,
+                   "function: size mismatch (expected 24 bytes — 20-byte address ++ 4-byte selector — got 23)",
+                   fn -> ABI.encode("foo(function)", [<<0::8*23>>]) end
+    end
+
+    test "function with a non-binary value inspects the value" do
+      assert_raise ArgumentError,
+                   "function: expected 24-byte binary, got 42",
+                   fn -> ABI.encode("foo(function)", [42]) end
+    end
+
+    test "bool with a non-boolean value interpolates the value" do
+      assert_raise RuntimeError, "Invalid data for bool: yes", fn ->
+        ABI.encode("foo(bool)", ["yes"])
+      end
+    end
+
+    test "bytesN longer than the declared size inspects the value" do
+      assert_raise RuntimeError, "size mismatch for bytes4: <<1, 2, 3, 4, 5>>", fn ->
+        ABI.encode("foo(bytes4)", [<<1, 2, 3, 4, 5>>])
+      end
+    end
+
+    test "bytesN with a non-binary value inspects the value" do
+      assert_raise RuntimeError, "wrong datatype for bytes4: 42", fn ->
+        ABI.encode("foo(bytes4)", [42])
+      end
+    end
+
+    test "unrecognized type tag inspects the type" do
+      sel = %FunctionSelector{function: nil, types: [%{type: {:weird, 8}}]}
+
+      assert_raise RuntimeError, "Unsupported encoding type: {:weird, 8}", fn ->
+        TypeEncoder.encode([42], sel)
+      end
+    end
+
+    test "struct encoded from a map with an unnamed field reports type and data" do
+      sel = %FunctionSelector{
+        function: nil,
+        types: [%{type: {:tuple, [%{type: {:uint, 256}}]}}]
+      }
+
+      assert_raise RuntimeError,
+                   "Cannot decode struct with map when no name given in type `%{type: {:uint, 256}}`\n\n\tfor data:\n\n\t%{\"bar\" => 1}",
+                   fn -> TypeEncoder.encode([%{"bar" => 1}], sel) end
+    end
+
+    test "struct encoded from a map missing the field names both key forms" do
+      sel = %FunctionSelector{
+        function: nil,
+        types: [%{type: {:tuple, [%{type: {:uint, 256}, name: "Foo"}]}}]
+      }
+
+      assert_raise RuntimeError,
+                   ~s(Cannot find key `:foo` or `"Foo"` for type `%{name: "Foo", type: {:uint, 256}}`\n\n\tin data:\n\n\t%{"bar" => 1}),
+                   fn -> TypeEncoder.encode([%{"bar" => 1}], sel) end
     end
   end
 end

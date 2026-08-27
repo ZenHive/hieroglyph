@@ -892,7 +892,7 @@ shipped_in = "b681b5e799867bce13bf32e92190d4aede75e7f5"
 id = 46
 phase = 5
 bundle = "peer_parity"
-status = "pending"
+status = "in_progress"
 title = "muex sweep over the ABI surface, graded against the task 44 planted-mutant corpus"
 scores = { d = 4, b = 6, u = 3 }
 markers = ["security"]
@@ -920,4 +920,5 @@ Routing is left open on purpose. The surface is a dispatch trigger and the tool 
 Confirmed 2026-08-24 on muex 0.8.3 (released the same day; Oeditus/muex#20 closed 09:42Z): the four-file reproduction reports survived=2 and a 0.0% score on Elixir 1.20.2 / OTP 29, and the converse check - the same two mutants against a value-asserting test - reports killed=2 and 100%, so the tool is not simply calling everything survived now. Re-run the reproduction against whatever version is installed when the campaign actually starts; this note records that a working release exists, not that the installed one is it.
 """
 created_at = "2026-08-23"
+started_at = "2026-08-27"
 scored_at = "2026-08-23"
