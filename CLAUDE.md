@@ -22,6 +22,46 @@
 
 Pure Elixir library for encoding/decoding the Solidity ABI. No runtime processes — `ABI.encode/2`, `ABI.decode/2`, and the `TypeEncoder`/`TypeDecoder`/`FunctionSelector`/`Event` modules under `lib/abi/` are all stateless functions.
 
+## Stack boundary — hieroglyph / cartouche / onchain
+
+**Cut on what defines the bytes, not on who calls the node.** Canonical statement lives in
+`cartouche/ROADMAP.md` § "Scope principle"; this is the binding summary.
+
+| Layer | Owns |
+|---|---|
+| **hieroglyph** | The ABI codec. Pure functions over types and bytes. No I/O, no chain identity, no node. |
+| **cartouche** | Everything defined by the **node's wire format**: the JSON-RPC transport, and one wrapper **plus one decoded struct** for every method in a **tagged release** of the `execution-apis` OpenRPC spec — plus transaction envelopes, signing, crypto, hex, and chain ids. |
+| **onchain** (and `onchain_*` siblings) | Everything defined by a **contract, a standard, or an off-node protocol**: ERC-*, ENS, AA, MEV, DEX, Multicall, subscriptions, vendor/bundler/relay namespaces. It **re-presents** cartouche's structs; it never re-derives them. |
+
+Routing, in one read:
+
+- **New `eth_*` / `net_*` wrapper** → cartouche, iff the method is in a **tagged** OpenRPC
+  release. Not in the spec → cartouche only with a `@doc` naming who serves it *and* a
+  capability probe. Vendor/bundler/relay namespace (`eth_sendUserOperation`,
+  `eth_sendBundle`, `eth_sendPrivateTransaction`) → onchain.
+- **Response decoding** → cartouche, always, into a cartouche struct. onchain never
+  re-derives a JSON shape the node emits.
+- **ERC standard** → onchain, or a sibling when domain-heavy (`onchain_aave`).
+- **Chain constants** → cartouche (`Cartouche.Chain`). A chain with a different tx envelope
+  gets its own package (`onchain_tempo`).
+- **Non-EVM chain** → its own package. Not cartouche, not onchain.
+
+**Why the previous rule was reversed (2026-08-27).** The old rule sent "RPC method
+wrappers" to onchain while leaving the transport and the response structs in cartouche.
+That is not a separable cut — `send_rpc/3` takes a `:decode` function, so a wrapper is
+*method string + param normalizer + pointer to a cartouche struct*, two of three parts
+already cartouche's. onchain could not own the decode without owning the struct, so it
+wrote its own. Measured cost: two mutually-incompatible `Block` representations
+(`Cartouche.Block` → struct with raw binaries; `Onchain.RPC.Helpers.parse_block_response/1`
+→ plain map with `0x` strings), ~500 LOC of duplicate decoders, twelve methods wrapped at
+both layers, a `@dialyzer {:no_match, do_rpc: 3}` suppression as the receipt, and
+`Onchain.HTTP` (34 LOC) existing only to escape cartouche's config key. No test can catch
+that class, because no module consumes both. **The old rule did not prevent the
+duplication — it caused it.**
+
+**Migrate lazily, never as a campaign.** When a task ports a method down into cartouche,
+the same task converts onchain's copy into a facade. Do not open a migration project.
+
 ## Toolchain & check commands (read before judging a build)
 
 Canonical gate: **`mix ci`** (= `precommit.full`) — `precommit` (format `--check-formatted` + compile `--warnings-as-errors` + `credo --strict` + `doctor --raise` + a **95%** coverage gate via `test.json --cover --cover-threshold 95 --exclude integration` + `sobelow --skip`), then `ex_dna --max-clones 0`, `reach.check --arch --smells`, `deps.audit.gated`, `dialyzer.json --quiet`, `agents.check`, `hieroglyph.manifest --check`. A clean `mix ci` is the merge bar. (`mix precommit` = the base steps only, no dialyzer/ex_dna/reach/audit. `mix check.fast` = format + compile + credo only.) Coverage is 95%, not 85% — this is a wire-format/crypto encoder (critical business logic). The commit hook does **not** run `precommit`; per-edit hooks grade touched files.
